@@ -1,0 +1,15 @@
+# Secrets — never commit
+config/*
+!config/credentials.example.txt
+!config/README.md
+
+# Caches, snapshots, run outputs
+data/*
+!data/.gitkeep
+
+# Python / OS cruft
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+.appmate_rag_cache/
