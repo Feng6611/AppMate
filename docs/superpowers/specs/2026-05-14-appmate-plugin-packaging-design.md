@@ -67,7 +67,7 @@ AppMateMax/                          ← repo root = the plugin
 ```
 
 **File moves:**
-- 15 Python scripts → `scripts/`
+- 16 Python scripts → `scripts/`
 - 6 `MyFeatures/*.md` → 6 `skills/*/SKILL.md` (translated to English)
 - Secrets (`credentials.txt`, `AuthKey_*.p8`, `searchads_private.p8`, `searchads_public.pem`,
   `search_ads_credentials.txt`, `.search_ads_token.json`) → `config/` (gitignored)
@@ -120,7 +120,7 @@ astro_endpoint   = http://127.0.0.1:8089/mcp
 
 ## 5. Script Changes (mechanical, Approach B)
 
-All 15 scripts get the same mechanical treatment — **no workflow logic changes**:
+All 16 scripts get the same mechanical treatment — **no workflow logic changes**:
 1. Replace `pathlib.Path(__file__).with_name("<cache>.json")` and similar with
    `appmate_config.data_path("<cache>.json")`.
 2. Replace credential/constant loading with `appmate_config` accessors:
@@ -128,6 +128,8 @@ All 15 scripts get the same mechanical treatment — **no workflow logic changes
      accessors; switch module-level `_CREDS` to lazy use inside `make_token()`/`sales_report()`.
    - `astro_client.py`: `ENDPOINT`, `POP_CACHE_PATH` → `appmate_config`.
    - `appmate_rag_client.py`: `BASE_URL` → `appmate_config.rag_base_url()`.
+   - `search_ads_client.py`: `CREDS_PATH` → `config_path(...)`, `TOKEN_CACHE` → `data_path(...)`;
+     switch module-level `CREDS` to lazy loading (Search Ads is unused but the script ships).
    - `sales_report.py`, `aso_report.py`, `aso_optimize.py`, `aso_daily.py`, `aso_astro.py`,
      `aso_optimize_v2.py`, `feature_ideate.py`, `growth_strategy.py`, `fetch_full.py`,
      `fetch_metadata.py`, `fetch_icons.py`, `app_analytics.py`: all `APPS_FULL` / `SALES_CACHE`
