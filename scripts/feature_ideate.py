@@ -1,6 +1,6 @@
 """Step 1 aggregator for the feature ideation workflow.
 
-See MyFeatures/FEATURE_IDEATION_WORKFLOW.md for the methodology.
+See skills/feature-ideation/SKILL.md for the methodology.
 Pipeline: app fuzzy match -> primary market -> review bucketing ->
 competitor fetch -> ASO blindspots -> phase_a JSON.
 """

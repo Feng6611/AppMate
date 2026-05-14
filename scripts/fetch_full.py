@@ -18,7 +18,7 @@ depending on app state and platform):
 
 Output:
   apps_full.json   one big object  { fetched_at, count, apps: [...] }
-  prints a categorized summary (上架 vs 未上架) at the end.
+  prints a categorized summary (live vs not-yet-live) at the end.
 """
 from __future__ import annotations
 
@@ -351,7 +351,7 @@ def categorize_and_print(records: list[dict[str, Any]]) -> None:
         )
 
     print()
-    print(f"━━━ 已上架 / Live on App Store ({len(live)}) ━━━")
+    print(f"━━━ Live on App Store ({len(live)}) ━━━")
     # group by platform inside
     for plat in ("IOS", "MAC_OS", "TV_OS", "VISION_OS"):
         group = []
@@ -366,7 +366,7 @@ def categorize_and_print(records: list[dict[str, Any]]) -> None:
         for rec in sorted(group, key=lambda r: r["core"].get("name") or ""):
             print(fmt(rec))
 
-    print(f"\n━━━ 未上架 / Not yet on App Store ({len(drafts)}) ━━━")
+    print(f"\n━━━ Not yet on App Store ({len(drafts)}) ━━━")
     states: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for rec in drafts:
         versions = rec.get("versions") or []

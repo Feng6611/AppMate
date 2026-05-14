@@ -1,11 +1,12 @@
 """Step 1 aggregator for the growth strategy workflow.
 
-See MyFeatures/GROWTH_STRATEGY_WORKFLOW.md for the methodology.
+See skills/growth-strategy/SKILL.md for the methodology.
 
 Pipeline:
   1a. App fuzzy match (reuse aso_optimize_v2.find_app)
   1b. Sales trend: D30 / D30_prev / slope / market_concentration
-  1c. Stage判定 (冷启动 / 衰退 / 早期增长 / 平台期)
+  1c. Stage detection — one of "冷启动" / "衰退" / "早期增长" / "平台期"
+      (cold start / decline / early growth / plateau)
   1d. ASO snapshot: current_locales / primary_market_top10_keywords /
       missing_locales_in_top_markets
   1e. Reviews summary: rating_avg / negative_count_90d / wishlist_count_90d /
@@ -167,16 +168,19 @@ def compute_sales_trend(
     }
 
 
-# --- Stage判定 ---------------------------------------------------------
+# --- Stage detection ---------------------------------------------------
 
 def determine_stage(sales: dict[str, Any], total_reviews: int) -> tuple[str, list[str]]:
-    """Apply 4-stage判定 per workflow §1c.
+    """Apply the 4-stage detection per the workflow §1c.
+
+    Returned stage values stay in Chinese because they key the methodology
+    cheat-sheet and appear verbatim in the generated report.
 
     Priority (top to bottom):
-      1. 冷启动: total_reviews < 20 OR D30 < 100
-      2. 衰退: slope < 0.8
-      3. 早期增长: slope > 1.2
-      4. 平台期: 0.8 <= slope <= 1.2 (fallback)
+      1. "冷启动" (cold start): total_reviews < 20 OR D30 < 100
+      2. "衰退" (decline): slope < 0.8
+      3. "早期增长" (early growth): slope > 1.2
+      4. "平台期" (plateau): 0.8 <= slope <= 1.2 (fallback)
     """
     d30 = sales["D30"]
     d30_prev = sales["D30_prev"]
@@ -214,7 +218,7 @@ def determine_stage(sales: dict[str, Any], total_reviews: int) -> tuple[str, lis
     ]
 
 
-# --- ASO snapshot抽取 --------------------------------------------------
+# --- ASO snapshot extraction -------------------------------------------
 
 def extract_aso_state(
     app: dict[str, Any],

@@ -1,12 +1,14 @@
 """ASO daily report.
 
 For the top-3 apps by 30-day downloads:
-  1. 主标题 / 副标题（按 locale）
-  2. 各市场表现：昨日下载量（按国家拆分）+ 该 storefront 中排名 ≤ #20 的关键词
-  3. (可选) 搜索热度 / Search Popularity — 需要 Apple Search Ads API 凭证
+  1. Title / subtitle (per locale).
+  2. Per-market performance: yesterday's downloads (split by country) plus the
+     keywords ranking <= #20 in that storefront.
+  3. (Optional) search popularity — requires Apple Search Ads API credentials.
 
-iTunes Search API 给排名（与 App Store 网页版同源）。
-Apple Search Ads API 给热度（需另行配置，见 README 段）。
+The iTunes Search API supplies rankings (same source as the App Store web
+search). The Apple Search Ads API supplies popularity (configured separately —
+see the README section).
 """
 from __future__ import annotations
 
@@ -106,7 +108,8 @@ def parse_keywords(s: str | None) -> list[str]:
 # whitespace, and Latin↔CJK boundaries only. Meaningful Chinese word
 # segmentation is delegated to the LLM consumer (Claude in conversation),
 # which reads the raw current_metadata text and proposes real ASO words
-# (e.g. "便利贴", "备忘录") that a regex tokenizer can't extract.
+# (e.g. "便利贴" / sticky note, "备忘录" / memo) that a regex tokenizer
+# can't extract.
 _LATIN_CJK_1 = re.compile(r"([A-Za-z0-9])([一-鿿぀-ヿ가-힣])")
 _LATIN_CJK_2 = re.compile(r"([一-鿿぀-ヿ가-힣])([A-Za-z0-9])")
 _SPLIT_RX = re.compile(r"[,;:|/\\\(\)\[\]\{\}\s　\.!\?！？•·…—\-]+")

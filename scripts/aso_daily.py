@@ -1,15 +1,19 @@
-"""ASO 日报 — 按用户定义的目标词获取流程：
+"""ASO daily report — target-keyword acquisition pipeline.
 
-  1. 每个 top-3 app 找单一最大市场（用 30 天下载量稳态选 market）。
-  2. 拿该 market 对应 locale 的主标题/副标题/关键词字段，拆词。
-  3. 每个候选词在 iTunes Search Top-200 查排名（App Store 网页同源）。
-  4. **rank ≤ 20** 才算"目标词"，进入目标词群组。
-  5. 目标词如果是首次出现 → Astro MCP 查 popularity / difficulty / appsCount。
-     已查过的从本地缓存直接读，不重复消耗 Astro 槽位。
-  6. 与昨天的 rank 快照对比，给出 Δ（提升/下降/持平）。
-  7. 渲染：app + 昨日下载（单一数字）+ 目标词表（按 popularity 降序）。
+  1. For each top-3 app, find its single largest market (chosen by stable
+     30-day download volume).
+  2. Pull the title/subtitle/keywords for that market's locale and tokenize.
+  3. Rank-check every candidate keyword via iTunes Search Top-200 (same
+     source as the App Store web search).
+  4. Only rank <= 20 counts as a "target keyword" and enters the target group.
+  5. For a target keyword seen for the first time, query Astro MCP for
+     popularity / difficulty / appsCount. Already-seen ones are read straight
+     from the local cache so Astro tracking slots are not consumed twice.
+  6. Compare against yesterday's rank snapshot and report the delta.
+  7. Render: app + yesterday's downloads (single number) + target-keyword
+     table (sorted by popularity descending).
 
-排名快照保存在 aso_rank_snapshots.json，每个日历日一份。
+Rank snapshots are stored in aso_rank_snapshots.json, one entry per calendar day.
 """
 from __future__ import annotations
 
@@ -42,7 +46,7 @@ SALES_CACHE = appmate_config.data_path("sales_cache.json")
 RANK_SNAPSHOTS = appmate_config.data_path("aso_rank_snapshots.json")
 OUT = appmate_config.data_path("aso_daily.md")
 
-TARGET_RANK_CEILING = 20  # 排名 ≤ 此值才算"目标词"
+TARGET_RANK_CEILING = 20  # only rank <= this value counts as a "target keyword"
 
 
 # ---------------------------------------------------------------------------
