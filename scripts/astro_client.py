@@ -133,11 +133,11 @@ def get_app_ratings(app_id: str | None = None, store: str | None = None, include
     return _tool_call("get_app_ratings", args)
 
 
-def add_keywords(app_id: str, keywords: list[str], store: str) -> Any:
+def add_keywords(app_id: str, keywords: list[str], store: str, timeout: int = 300) -> Any:
     return _tool_call(
         "add_keywords",
         {"appId": app_id, "keywords": keywords, "store": store},
-        timeout=120,
+        timeout=timeout,
     )
 
 
@@ -164,6 +164,24 @@ POP_CACHE_PATH = appmate_config.data_path("astro_popularity_cache.json")
 # Use the "iPhone" placeholder app (appId=10) as anchor so transient lookups
 # don't pollute real apps' tracking lists.
 DEFAULT_ANCHOR_APP_ID = "10"
+# Astro appears to floor popularity reports at 5 for keywords below its
+# measurement threshold. Treat <=5 as "no real search-volume signal".
+POP_FLOOR_THRESHOLD = 5
+
+
+def _shape_record(rec: dict[str, Any], store: str, was_tracked: bool) -> dict[str, Any]:
+    pop = rec.get("popularity")
+    return {
+        "keyword": rec.get("keyword"),
+        "store": store,
+        "popularity": pop,
+        "difficulty": rec.get("difficulty"),
+        "currentRanking": rec.get("currentRanking"),
+        "appsCount": rec.get("appsCount"),
+        "popularity_is_floor": isinstance(pop, (int, float)) and pop <= POP_FLOOR_THRESHOLD,
+        "was_tracked": was_tracked,
+        "fetched_at": time.time(),
+    }
 
 
 def _load_pop_cache() -> dict[str, Any]:
@@ -205,31 +223,23 @@ def lookup_popularity(
     existing = get_app_keywords(app_id=anchor_app_id, store=store)
     for rec in existing:
         if rec.get("keyword", "").lower() == keyword.lower():
-            out = {
-                "keyword": rec.get("keyword"),
-                "store": store,
-                "popularity": rec.get("popularity"),
-                "difficulty": rec.get("difficulty"),
-                "currentRanking": rec.get("currentRanking"),
-                "appsCount": rec.get("appsCount"),
-                "was_tracked": True,
-                "fetched_at": time.time(),
-            }
+            out = _shape_record(rec, store, was_tracked=True)
             cache[cache_key] = out
             _save_pop_cache(cache)
             return out
 
-    # Not tracked — add transiently
-    added = add_keywords(app_id=anchor_app_id, keywords=[keyword], store=store) or {}
+    # Not tracked — add transiently. Tolerate ReadTimeout: Astro often finishes
+    # the work server-side after the HTTP read times out, so we always fall
+    # through to a tracked_now harvest before giving up.
+    try:
+        added = add_keywords(app_id=anchor_app_id, keywords=[keyword], store=store) or {}
+    except requests.exceptions.ReadTimeout:
+        added = {}
     results = added.get("results") or []
-    if not results:
-        return None
-    r0 = results[0]
-    if not r0.get("success") or r0.get("skipped"):
-        return None
+    r0 = results[0] if results else None
 
-    # Capture data — note: add_keywords doesn't return appsCount.
-    # If we need it, immediately query get_app_keywords before remove.
+    # Always query get_app_keywords — this is where appsCount lives AND where
+    # we recover data that the add_keywords response didn't reach us with.
     enriched: dict[str, Any] | None = None
     try:
         kws = get_app_keywords(app_id=anchor_app_id, store=store)
@@ -240,16 +250,20 @@ def lookup_popularity(
     except Exception:
         pass
 
-    out = {
-        "keyword": r0.get("keyword", keyword),
-        "store": store,
-        "popularity": r0.get("popularity"),
-        "difficulty": r0.get("difficulty"),
-        "currentRanking": (enriched or {}).get("currentRanking"),
-        "appsCount": (enriched or {}).get("appsCount"),
-        "was_tracked": False,
-        "fetched_at": time.time(),
+    if not enriched and (not r0 or not r0.get("success") or r0.get("skipped")):
+        # Best-effort cleanup in case Astro added it after the response failed
+        try:
+            remove_keywords(anchor_app_id, [keyword], store)
+        except Exception:
+            pass
+        return None
+
+    source = enriched or {
+        "keyword": r0.get("keyword", keyword) if r0 else keyword,
+        "popularity": r0.get("popularity") if r0 else None,
+        "difficulty": r0.get("difficulty") if r0 else None,
     }
+    out = _shape_record(source, store, was_tracked=False)
 
     # Remove to free the slot
     try:
@@ -267,15 +281,20 @@ def lookup_popularity_batch(
     store: str,
     anchor_app_id: str = DEFAULT_ANCHOR_APP_ID,
     use_cache: bool = True,
-    batch_size: int = 50,
+    batch_size: int = 10,
     cache_ttl_hours: int = 24,
+    add_timeout: int = 300,
 ) -> dict[str, dict[str, Any]]:
     """Look up popularity for many keywords efficiently.
 
     1. Filter to ones not in cache.
     2. Of those, partition by already-tracked vs need-to-add.
-    3. add_keywords accepts up to 100 in one call — batch them.
-    4. Capture data, remove the just-added ones.
+    3. add_keywords accepts up to 100/call but the Astro server scrapes each
+       keyword's full search results, so big batches commonly exceed the HTTP
+       read timeout. Default batch_size=10 keeps each call under ~60s.
+    4. On HTTP read timeout: Astro often finishes the work server-side anyway.
+       We always re-query get_app_keywords after each chunk to harvest whatever
+       landed, and always issue remove_keywords to free the slots.
     """
     cache = _load_pop_cache() if use_cache else {}
     out: dict[str, dict[str, Any]] = {}
@@ -286,6 +305,13 @@ def lookup_popularity_batch(
         if use_cache and key in cache:
             rec = cache[key]
             if time.time() - rec.get("fetched_at", 0) < cache_ttl_hours * 3600:
+                # Backfill popularity_is_floor for records cached before the
+                # flag existed, so consumers see a stable schema.
+                if "popularity_is_floor" not in rec:
+                    pop = rec.get("popularity")
+                    rec["popularity_is_floor"] = (
+                        isinstance(pop, (int, float)) and pop <= POP_FLOOR_THRESHOLD
+                    )
                 out[kw] = rec
                 continue
         pending.append(kw)
@@ -298,17 +324,7 @@ def lookup_popularity_batch(
     to_add: list[str] = []
     for kw in pending:
         if kw.lower() in already:
-            rec = already[kw.lower()]
-            data = {
-                "keyword": rec.get("keyword"),
-                "store": store,
-                "popularity": rec.get("popularity"),
-                "difficulty": rec.get("difficulty"),
-                "currentRanking": rec.get("currentRanking"),
-                "appsCount": rec.get("appsCount"),
-                "was_tracked": True,
-                "fetched_at": time.time(),
-            }
+            data = _shape_record(already[kw.lower()], store, was_tracked=True)
             cache[f"{store.lower()}|{kw.lower()}"] = data
             out[kw] = data
         else:
@@ -317,9 +333,16 @@ def lookup_popularity_batch(
     # Batch-add and capture
     for i in range(0, len(to_add), batch_size):
         chunk = to_add[i : i + batch_size]
-        res = add_keywords(app_id=anchor_app_id, keywords=chunk, store=store) or {}
-        results = {r.get("keyword", "").lower(): r for r in res.get("results", [])}
-        # Enrich with appsCount from the just-added tracking
+        try:
+            res = add_keywords(app_id=anchor_app_id, keywords=chunk, store=store, timeout=add_timeout) or {}
+        except requests.exceptions.ReadTimeout:
+            res = {}
+        results_map = {r.get("keyword", "").lower(): r for r in res.get("results", [])}
+
+        # Always re-query — this is both the appsCount enrichment AND the
+        # recovery path when add_keywords HTTP timed out but server-side state
+        # has the keywords. get_app_keywords carries the full record (popularity,
+        # difficulty, appsCount), so we prefer it over the add_keywords response.
         try:
             tracked_now = {
                 r.get("keyword", "").lower(): r
@@ -327,24 +350,23 @@ def lookup_popularity_batch(
             }
         except Exception:
             tracked_now = {}
+
         for kw in chunk:
-            r0 = results.get(kw.lower())
-            if not r0 or not r0.get("success") or r0.get("skipped"):
+            r0 = results_map.get(kw.lower())
+            enriched = tracked_now.get(kw.lower())
+            if not enriched and (not r0 or not r0.get("success") or r0.get("skipped")):
                 continue
-            enriched = tracked_now.get(kw.lower(), {})
-            data = {
+            source = enriched or {
                 "keyword": r0.get("keyword", kw),
-                "store": store,
                 "popularity": r0.get("popularity"),
                 "difficulty": r0.get("difficulty"),
-                "currentRanking": enriched.get("currentRanking"),
-                "appsCount": enriched.get("appsCount"),
-                "was_tracked": False,
-                "fetched_at": time.time(),
             }
+            data = _shape_record(source, store, was_tracked=False)
             cache[f"{store.lower()}|{kw.lower()}"] = data
             out[kw] = data
-        # Remove the just-added batch
+
+        # Always try to remove the chunk — even on add-timeout, server may have
+        # tracked them. Best-effort; doesn't block on failure.
         if chunk:
             try:
                 remove_keywords(anchor_app_id, chunk, store)
