@@ -315,7 +315,8 @@ def render(results: list[dict[str, Any]], data_today: dt.date) -> str:
 # Main
 # ---------------------------------------------------------------------------
 def main() -> int:
-    appmate_config.require_credentials_or_exit()
+    import key_safety
+    key_safety.require_safe_key_or_exit()
     apps, data_today = top_3_by_30d_downloads()
     if not apps:
         print("No apps found.", file=sys.stderr)

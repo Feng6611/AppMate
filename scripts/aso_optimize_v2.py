@@ -463,7 +463,8 @@ def main(argv: list[str]) -> int:
         print(USAGE)
         return 0
 
-    appmate_config.require_credentials_or_exit()
+    import key_safety
+    key_safety.require_safe_key_or_exit()
     cmd, *rest = argv
 
     if cmd == "analyze":

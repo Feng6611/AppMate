@@ -157,18 +157,45 @@ def require_credentials_or_exit(stream=None) -> None:
 
 def _cli(argv: list[str]) -> int:
     if len(argv) == 1 and argv[0] == "check":
+        # 1) Offline credential presence
         status = credential_status()
         bad_lines = _format_missing(status)
-        if not bad_lines:
-            print("AppMate credentials: ok")
-            print(f"  config file: {CONFIG_DIR / 'credentials.txt'}")
+        if bad_lines:
+            print("AppMate credentials: NOT configured", file=sys.stderr)
+            print(f"  config file: {CONFIG_DIR / 'credentials.txt'}", file=sys.stderr)
+            for line in bad_lines:
+                print(line, file=sys.stderr)
+            print("Run /appmate-setup to fix.", file=sys.stderr)
+            return 2
+        print("AppMate credentials: ok")
+        print(f"  config file: {CONFIG_DIR / 'credentials.txt'}")
+
+        # 2) Online role-safety probe (cached). Deferred import keeps this
+        # module dependency-light when callers only need the offline check.
+        try:
+            import key_safety  # type: ignore[import-not-found]
+        except ImportError:
+            # Safety module missing — surface a warning but don't gate. Should
+            # never happen in a normal install.
+            print(
+                "WARNING: scripts/key_safety.py not found; skipping key role probe.",
+                file=sys.stderr,
+            )
             return 0
-        print("AppMate credentials: NOT configured", file=sys.stderr)
-        print(f"  config file: {CONFIG_DIR / 'credentials.txt'}", file=sys.stderr)
-        for line in bad_lines:
-            print(line, file=sys.stderr)
-        print("Run /appmate-setup to fix.", file=sys.stderr)
-        return 2
+        assessment = key_safety.assess_key_safety()
+        if assessment["safe"]:
+            print(
+                f"AppMate key safety: SAFE  (source={assessment['source']}, checked_at={assessment['checked_at']})"
+            )
+            return 0
+        # Unsafe — print the same message require_safe_key_or_exit would print
+        # and exit 2.
+        try:
+            key_safety.require_safe_key_or_exit()
+        except SystemExit as exc:
+            return int(exc.code) if isinstance(exc.code, int) else 2
+        return 2  # unreachable; defensive
+
     print("usage: python3 scripts/appmate_config.py check", file=sys.stderr)
     return 1
 

@@ -158,8 +158,23 @@ def test_require_credentials_or_exit_lists_missing_p8(monkeypatch, tmp_path):
 def test_cli_check_returns_0_when_configured(monkeypatch, tmp_path, capsys):
     cfg = _fresh(monkeypatch, tmp_path)
     _write_full_creds(tmp_path)
+    # The CLI also runs the online safety probe — stub it to "safe".
+    import key_safety
+    monkeypatch.setattr(
+        key_safety,
+        "assess_key_safety",
+        lambda force=False: {
+            "safe": True,
+            "checked_at": "2026-05-16T00:00:00",
+            "unsafe_roles": [],
+            "probe": {},
+            "source": "cache",
+        },
+    )
     assert cfg._cli(["check"]) == 0
-    assert "credentials: ok" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "credentials: ok" in out
+    assert "SAFE" in out
 
 
 def test_cli_check_returns_2_when_missing(monkeypatch, tmp_path, capsys):
@@ -168,6 +183,30 @@ def test_cli_check_returns_2_when_missing(monkeypatch, tmp_path, capsys):
     err = capsys.readouterr().err
     assert "NOT configured" in err
     assert "/appmate-setup" in err
+
+
+def test_cli_check_returns_2_when_key_unsafe(monkeypatch, tmp_path, capsys):
+    cfg = _fresh(monkeypatch, tmp_path)
+    _write_full_creds(tmp_path)
+    import key_safety
+    monkeypatch.setattr(
+        key_safety,
+        "assess_key_safety",
+        lambda force=False: {
+            "safe": False,
+            "checked_at": "2026-05-16T00:00:00",
+            "unsafe_roles": ["Admin — full write access"],
+            "probe": {"/v1/users": 200},
+            "source": "fresh",
+        },
+    )
+    # require_safe_key_or_exit normally re-reads assess_key_safety; the offline
+    # check + assessment in _cli's branch is what we're exercising, so let
+    # require_safe_key_or_exit raise to mimic the real flow.
+    def fake_require(stream=None, force_probe=False):
+        raise SystemExit(2)
+    monkeypatch.setattr(key_safety, "require_safe_key_or_exit", fake_require)
+    assert cfg._cli(["check"]) == 2
 
 
 def test_cli_unknown_subcommand_returns_1(monkeypatch, tmp_path, capsys):

@@ -32,9 +32,21 @@ To find that directory, run `/plugin` inside Claude Code and look at the path ne
 
 ## Setup (one-time, ~3 min)
 
-Run `/appmate-setup` inside Claude Code. It walks you through the four credential fields and runs a 3-point self-check.
+Run `/appmate-setup` inside Claude Code. It walks you through the four credential fields and runs a 4-point self-check.
 
-If you want to do it by hand instead:
+> ### ⚠ API key role selection — read this before generating the key
+>
+> AppMate is a read-only analytics tool. **The key you create must NOT have any write access to App Store Connect**, or one buggy script / hallucinated tool call could damage your live app data, builds, or banking info.
+>
+> When generating the key in App Store Connect → Users and Access → Integrations → App Store Connect API, **check ONLY these roles**:
+>
+> - ☑ **Sales and Reports** (read sales / downloads)
+> - ☑ **Customer Support** (read reviews)
+> - ☑ **Marketing** (read analytics)
+>
+> **Do NOT check** any of: **Admin · Developer · App Manager · Finance**. These grant write access to live App Store data, build uploads, app metadata, or banking. AppMate will **detect** any of these via an API role probe on startup and **refuse to run** — pretty messages, but you have already burned the time and you will be told to revoke the key and start over. Save yourself the trip.
+
+If you want to do setup by hand instead:
 
 ```bash
 # from the plugin directory
@@ -46,13 +58,18 @@ Then edit `config/credentials.txt` and fill in:
 | Field | Where to get it |
 |---|---|
 | `issuer_id` | App Store Connect → Users and Access → Integrations → App Store Connect API → "Issuer ID" at the top |
-| `key_id` | Same page → the Key ID column of the API key you create |
+| `key_id` | Same page → the Key ID column of the API key you create (with **only Sales and Reports / Customer Support / Marketing** roles checked — see the warning above) |
 | `private_key_path` | Drop the `.p8` file you downloaded when creating the API key into `config/`, then point this field at it (e.g. `config/AuthKey_XXXXXXXX.p8`) |
 | `vendor_number` | App Store Connect → Payments and Financial Reports → vendor number near the top |
 
 Run the self-check from the plugin root to confirm everything works:
 
 ```bash
+# 0. Universal gate — offline credential validation + online key-role probe.
+#    Returns exit 0 only when credentials are complete AND the key has no
+#    write-capable App Store Connect roles. The probe result is cached for 7 days.
+python3 scripts/appmate_config.py check
+
 # 1. ASC API JWT — should print "..." after a JWT prefix
 python3 scripts/asc_client.py token | head -c 30 && echo "..."
 
@@ -63,7 +80,7 @@ python3 -c "import sys; sys.path.insert(0,'scripts'); from asc_client import app
 python3 scripts/appmate_rag_client.py health
 ```
 
-All three green = every workflow can run.
+All four green = every workflow can run.
 
 > **What's gitignored**: everything under `config/` (your credentials + .p8 key) and most of `data/` (caches + generated reports). The two static `data/keyword_reference_<region>.json` tables that ship with the plugin are the only exceptions. To keep `config/` and `data/` outside the plugin directory, set `APPMATE_HOME` to a folder you control.
 
@@ -153,6 +170,8 @@ python3 -m pytest
 | `analytics report request returned 403` | App Analytics sharing is not enabled in your App Store Connect web UI — separate authorization step. |
 | Apple sales report shows "暂无" for today | Apple's daily report lags 1-2 days; the script auto-anchors to the most recent day with data. Re-run tomorrow. |
 | `fuzzy match` finds the wrong app | Pass the exact App Store ID or bundle ID instead of a name. |
+| `AppMate refuses to run — the configured API key has write access` | Your API key has one of the refused roles (Admin / Developer / App Manager / Finance). Revoke the key in App Store Connect, generate a new one with **only Sales and Reports / Customer Support / Marketing**, replace the `.p8` and `key_id`, delete `data/key_safety.json`, re-run `python3 scripts/appmate_config.py check`. |
+| `Could not reach App Store Connect to verify key roles` | Network error during the role probe. AppMate will not start without a successful probe — fix connectivity and retry. |
 
 ---
 
