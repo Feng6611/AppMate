@@ -536,6 +536,7 @@ def render(dims: list[dict[str, Any]], live_apps: set[str]) -> None:
 
 # ---------------------------------------------------------------------------
 def main() -> int:
+    appmate_config.require_credentials_or_exit()
     global DATA_TODAY
     dates = needed_dates()
     print(f"Window: {dates[0].isoformat()} → {dates[-1].isoformat()} ({len(dates)} days)")

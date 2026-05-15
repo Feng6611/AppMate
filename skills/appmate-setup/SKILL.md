@@ -48,11 +48,16 @@ All secrets and account-specific constants live in a **gitignored `config/` dire
 
 See `docs/ASC_API_REFERENCE.md` for the full endpoint reference.
 
-## Self-check (3 checks — all green means the plugin is ready)
+## Self-check (4 checks — all green means the plugin is ready)
 
 Run from the plugin repo root:
 
 ```bash
+# 0. Credentials gate — universal precheck used by every downstream workflow.
+#    Exits 0 ("credentials: ok") if every required field is set and the .p8
+#    file exists; exits 2 with a per-field checklist otherwise.
+python3 scripts/appmate_config.py check
+
 # 1. ASC API — should print a JWT prefix
 python3 scripts/asc_client.py token | head -c 30 && echo "..."
 
@@ -63,7 +68,9 @@ python3 -c "import sys; sys.path.insert(0,'scripts'); from asc_client import app
 python3 scripts/appmate_rag_client.py health
 ```
 
-All 3 green = every downstream workflow (`sales-daily-report`, `aso-daily-report`, `aso-optimize`, `feature-ideation`, `growth-strategy`) can run.
+Check 0 is the **universal gate**: every downstream workflow script (`sales_report.py`, `aso_daily.py`, `aso_optimize_v2.py`, `growth_strategy.py`, `feature_ideate.py`) calls it at the top of `main()` and exits 2 with a clear pointer back here if anything is missing. Each `/appmate-*` command also runs this check before invoking its skill.
+
+All 4 green = every downstream workflow (`sales-daily-report`, `aso-daily-report`, `aso-optimize`, `feature-ideation`, `growth-strategy`) can run.
 
 ## Config file inventory (paths relative to the plugin repo root)
 

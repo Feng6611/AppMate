@@ -1,5 +1,8 @@
 import importlib
+import io
 import pathlib
+
+import pytest
 
 import appmate_config
 
@@ -8,6 +11,17 @@ def _fresh(monkeypatch, home: pathlib.Path):
     monkeypatch.setenv("APPMATE_HOME", str(home))
     mod = importlib.reload(appmate_config)
     return mod
+
+
+def _write_full_creds(home: pathlib.Path, *, key_present: bool = True) -> None:
+    """Populate a complete credentials.txt + optional .p8 under *home*."""
+    cfg_dir = home / "config"
+    cfg_dir.mkdir(exist_ok=True)
+    (cfg_dir / "credentials.txt").write_text(
+        "issuer_id=i\nkey_id=k\nvendor_number=v\nprivate_key_path=config/key.p8\n"
+    )
+    if key_present:
+        (cfg_dir / "key.p8").write_text("-----BEGIN PRIVATE KEY-----\nstub\n")
 
 
 def test_paths_resolve_under_appmate_home(monkeypatch, tmp_path):
@@ -63,3 +77,101 @@ def test_accessors_return_values_when_present(monkeypatch, tmp_path):
     assert cfg.asc_key_id() == "k"
     assert cfg.asc_vendor_number() == "v"
     assert cfg.asc_private_key_path() == tmp_path / "config" / "key.p8"
+
+
+# --- credential_status / credentials_ok ----------------------------------
+def test_credential_status_all_missing_when_no_file(monkeypatch, tmp_path):
+    cfg = _fresh(monkeypatch, tmp_path)
+    status = cfg.credential_status()
+    assert set(status.keys()) == set(cfg.REQUIRED_CRED_KEYS)
+    assert all(v == "missing" for v in status.values())
+    assert cfg.credentials_ok() is False
+
+
+def test_credential_status_all_ok_when_complete(monkeypatch, tmp_path):
+    cfg = _fresh(monkeypatch, tmp_path)
+    _write_full_creds(tmp_path)
+    assert cfg.credential_status() == {k: "ok" for k in cfg.REQUIRED_CRED_KEYS}
+    assert cfg.credentials_ok() is True
+
+
+def test_credential_status_flags_missing_p8_file(monkeypatch, tmp_path):
+    cfg = _fresh(monkeypatch, tmp_path)
+    _write_full_creds(tmp_path, key_present=False)
+    status = cfg.credential_status()
+    assert status["private_key_path"] == "key_file_missing"
+    # other three are still ok
+    assert status["issuer_id"] == "ok"
+    assert status["key_id"] == "ok"
+    assert status["vendor_number"] == "ok"
+    assert cfg.credentials_ok() is False
+
+
+def test_credential_status_partial(monkeypatch, tmp_path):
+    cfg = _fresh(monkeypatch, tmp_path)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "credentials.txt").write_text(
+        "issuer_id=i\nkey_id=\nvendor_number=v\n"  # key_id empty, private_key_path absent
+    )
+    status = cfg.credential_status()
+    assert status["issuer_id"] == "ok"
+    assert status["key_id"] == "missing"
+    assert status["vendor_number"] == "ok"
+    assert status["private_key_path"] == "missing"
+
+
+# --- require_credentials_or_exit -----------------------------------------
+def test_require_credentials_or_exit_passes_when_complete(monkeypatch, tmp_path):
+    cfg = _fresh(monkeypatch, tmp_path)
+    _write_full_creds(tmp_path)
+    # Must return None and not raise.
+    assert cfg.require_credentials_or_exit() is None
+
+
+def test_require_credentials_or_exit_exits_with_code_2(monkeypatch, tmp_path):
+    cfg = _fresh(monkeypatch, tmp_path)
+    buf = io.StringIO()
+    with pytest.raises(SystemExit) as exc:
+        cfg.require_credentials_or_exit(stream=buf)
+    assert exc.value.code == 2
+    out = buf.getvalue()
+    assert "not fully configured" in out
+    assert "/appmate-setup" in out
+    # All four missing keys should be enumerated.
+    for key in cfg.REQUIRED_CRED_KEYS:
+        assert key in out
+
+
+def test_require_credentials_or_exit_lists_missing_p8(monkeypatch, tmp_path):
+    cfg = _fresh(monkeypatch, tmp_path)
+    _write_full_creds(tmp_path, key_present=False)
+    buf = io.StringIO()
+    with pytest.raises(SystemExit) as exc:
+        cfg.require_credentials_or_exit(stream=buf)
+    assert exc.value.code == 2
+    out = buf.getvalue()
+    assert "private_key_path" in out
+    assert ".p8 file does not exist" in out
+
+
+# --- CLI -----------------------------------------------------------------
+def test_cli_check_returns_0_when_configured(monkeypatch, tmp_path, capsys):
+    cfg = _fresh(monkeypatch, tmp_path)
+    _write_full_creds(tmp_path)
+    assert cfg._cli(["check"]) == 0
+    assert "credentials: ok" in capsys.readouterr().out
+
+
+def test_cli_check_returns_2_when_missing(monkeypatch, tmp_path, capsys):
+    cfg = _fresh(monkeypatch, tmp_path)
+    assert cfg._cli(["check"]) == 2
+    err = capsys.readouterr().err
+    assert "NOT configured" in err
+    assert "/appmate-setup" in err
+
+
+def test_cli_unknown_subcommand_returns_1(monkeypatch, tmp_path, capsys):
+    cfg = _fresh(monkeypatch, tmp_path)
+    assert cfg._cli([]) == 1
+    assert cfg._cli(["bogus"]) == 1
+    assert "usage:" in capsys.readouterr().err

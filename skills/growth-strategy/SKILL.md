@@ -8,6 +8,16 @@ description: Generate a stage-diagnosed growth strategy for an app — a phase d
 > This skill is the single authoritative reference for the growth strategy flow. Re-read it before every run.
 > v1: stage-diagnosis-driven + a static methodology cheat-sheet.
 
+## Step 0 — Prerequisites (credentials must be configured)
+
+Every step in this skill calls App Store Connect APIs. **Before any other step**, run:
+
+```bash
+python3 scripts/appmate_config.py check
+```
+
+If exit code ≠ 0, STOP. Do not invoke any other part of this skill, do not run `scripts/growth_strategy.py`. Tell the user AppMate credentials are not configured, show the precheck output verbatim, and tell them to run `/appmate-setup`. The downstream script also enforces this gate (exits 2 with the same message).
+
 ## One-line summary
 
 Given a live app → the script aggregates **sales trend + ASO state + reviews + competitors** (4 evidence sources) and auto-determines which of 4 stages the app is in → the LLM reads the "methodology cheat-sheet" section of this skill → a markdown report with **a stage diagnosis paragraph first**, then **3-5 growth strategies**, each with **4 executable steps**.

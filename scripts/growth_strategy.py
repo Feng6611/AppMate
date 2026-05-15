@@ -393,6 +393,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("app", help="App Store ID / bundle ID / SKU / fuzzy name")
     args = parser.parse_args(argv)
 
+    appmate_config.require_credentials_or_exit()
+
     apps = (_load_json(APPS_FULL_PATH) or {}).get("apps") or []
     app = find_app(args.app, apps=apps)
     if not app:

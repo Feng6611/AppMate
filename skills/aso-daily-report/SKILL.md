@@ -7,6 +7,16 @@ description: Generate the ASO keyword-ranking daily report for the top-3 apps by
 
 > Run once to watch the keyword-ranking changes of the top-3 apps in their main markets.
 
+## Step 0 — Prerequisites (credentials must be configured)
+
+Every step in this skill calls App Store Connect APIs. **Before any other step**, run:
+
+```bash
+python3 scripts/appmate_config.py check
+```
+
+If exit code ≠ 0, STOP. Do not invoke any other part of this skill, do not run `scripts/aso_daily.py`. Tell the user AppMate credentials are not configured, show the precheck output verbatim, and tell them to run `/appmate-setup`. The downstream script also enforces this gate (exits 2 with the same message), but the explicit precheck avoids wasted iTunes Search calls.
+
 ## One-line summary
 
 Take the top-3 apps by download volume → find each one's main market → **LLM semantic tokenization** → query iTunes Search for rankings → rank ≤ 20 enters the "target keyword group" → popularity & difficulty come from the static keyword reference → compare against yesterday's snapshot → markdown report.

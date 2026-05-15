@@ -8,6 +8,16 @@ description: Generate prioritized feature recommendations for an app from review
 > This skill is the single authoritative reference for the feature ideation flow. Re-read it before every run.
 > v2: removed the ASO traffic-blindspot source (high cost, poor results) + simplified the output format (two sentences per item, no scores).
 
+## Step 0 — Prerequisites (credentials must be configured)
+
+Every step in this skill calls App Store Connect APIs. **Before any other step**, run:
+
+```bash
+python3 scripts/appmate_config.py check
+```
+
+If exit code ≠ 0, STOP. Do not invoke any other part of this skill, do not run `scripts/feature_ideate.py`. Tell the user AppMate credentials are not configured, show the precheck output verbatim, and tell them to run `/appmate-setup`. The downstream script also enforces this gate (exits 2 with the same message).
+
 ## One-line summary
 
 Given a live app → the script aggregates two evidence sources (**reviews + competitors**) → the LLM scores and internally ranks on 4 dimensions → a markdown report with two sentences per feature (what it is + why), with no scores shown.
