@@ -6,6 +6,14 @@ config/*
 # Caches, snapshots, run outputs
 data/*
 !data/.gitkeep
+# But ship the indie keyword reference — it's the plugin's static value-add,
+# not a per-user cache
+!data/keyword_reference_cn.json
+!data/keyword_reference_cn.csv
+!data/keyword_reference_cn.md
+!data/keyword_reference_us.json
+!data/keyword_reference_us.csv
+!data/keyword_reference_us.md
 
 # Python / OS cruft
 __pycache__/
