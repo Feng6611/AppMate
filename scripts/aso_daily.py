@@ -6,9 +6,8 @@
   3. Rank-check every candidate keyword via iTunes Search Top-200 (same
      source as the App Store web search).
   4. Only rank <= 20 counts as a "target keyword" and enters the target group.
-  5. For a target keyword seen for the first time, query Astro MCP for
-     popularity / difficulty / appsCount. Already-seen ones are read straight
-     from the local cache so Astro tracking slots are not consumed twice.
+  5. Look up popularity / difficulty / appsCount from the local keyword
+     reference table (`data/keyword_reference_<region>.json`).
   6. Compare against yesterday's rank snapshot and report the delta.
   7. Render: app + yesterday's downloads (single number) + target-keyword
      table (sorted by popularity descending).
@@ -28,7 +27,7 @@ from typing import Any
 
 # Reuse infrastructure already built
 import appmate_config
-import astro_client
+import keyword_local
 from aso_optimize import (
     COUNTRY_FLAG, PLATFORM_TO_ENTITY, PLATFORM_LABEL,
     find_top_market, pick_locales_for_country,
@@ -197,9 +196,9 @@ def analyze_app(
     }
     print(f"    {len(target_words)} target words (rank ≤ {TARGET_RANK_CEILING})", flush=True)
 
-    # Step 5 — popularity / difficulty from Astro (only for new ones; batch handles cache)
+    # Step 5 — popularity / difficulty from the local keyword reference
     if target_words:
-        pop_map = astro_client.lookup_popularity_batch(list(target_words), country.lower())
+        pop_map = keyword_local.lookup_popularity_batch(list(target_words), country.lower())
     else:
         pop_map = {}
 
@@ -273,7 +272,7 @@ def render(results: list[dict[str, Any]], data_today: dt.date) -> str:
     lines: list[str] = []
     lines.append("# 🎯 ASO 日报")
     lines.append("")
-    lines.append(f"**昨天 ({data_today:%m-%d}) 数据 · 排名 = App Store 网页搜索 · 热度/难度 = Astro**")
+    lines.append(f"**昨天 ({data_today:%m-%d}) 数据 · 排名 = App Store 网页搜索 · 热度/难度 = 内部指标**")
     lines.append("")
     lines.append("---")
     lines.append("")

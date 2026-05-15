@@ -60,7 +60,7 @@ Each review records: `{rating, title, body, locale, created_at}` (`body` is Appl
 - **Extract**: per competitor `{name, rating, review_count, description, appmate_reason}`
 - ⚠️ `appmate_*` internal scores are for evidence ranking only — not shown to the end user.
 
-> **v1 → v2 change**: v1 once tried to use `astro_popularity_cache.json` to find "high-pop traffic blindspots" as a third evidence source — measured as poor: the cache was polluted by other apps' queries (cross-category high-pop words like `微信 / 浏览器 / qq` appeared in the blindspot list of a note app); new-scenario apps had an empty cache; actively querying Astro MCP is costly and unstable. This step was removed. If re-added in the future, the script must actively call Astro `lookup_popularity_batch` to pull category-relevant words, rather than passively reading the cache.
+> **v1 → v2 change**: v1 once tried to use a popularity cache to find "high-pop traffic blindspots" as a third evidence source — measured as poor (cross-category high-pop words polluted the blindspot list, new-scenario apps had no signal). Removed in v2.
 
 ## 1d. phase_a JSON shape
 

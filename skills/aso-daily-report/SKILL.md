@@ -9,7 +9,7 @@ description: Generate the ASO keyword-ranking daily report for the top-3 apps by
 
 ## One-line summary
 
-Take the top-3 apps by download volume → find each one's main market → **LLM semantic tokenization** → query iTunes Search for rankings → rank ≤ 20 enters the "target keyword group" → Astro supplies heat & difficulty → compare against yesterday's snapshot → markdown report.
+Take the top-3 apps by download volume → find each one's main market → **LLM semantic tokenization** → query iTunes Search for rankings → rank ≤ 20 enters the "target keyword group" → popularity & difficulty come from the static keyword reference → compare against yesterday's snapshot → markdown report.
 
 ## Difference from the `aso-optimize` skill
 
@@ -36,7 +36,7 @@ Take the top-3 apps by download volume → find each one's main market → **LLM
 
 1. **Step 1: get the top-3 + each one's current state (script)** — descending by 30-day downloads; skip not-live / DEVELOPER_REJECTED; for each app: find the single largest market, pick the locale, extract raw title/subtitle/keywords. Output an intermediate JSON (the raw metadata of the 3 apps).
 2. **Step 2: LLM tokenization (you, conversation layer)** — read each app's raw metadata; cut real ASO words with Chinese semantics; reject long CJK mashed runs (≥ 6 chars are usually invalid); output a token list per app.
-3. **Step 3: validate + render (script + LLM)** — script: each token → iTunes rank + Astro popularity + difficulty; write today's snapshot to `data/aso_rank_snapshots.json`; compare against yesterday's snapshot to compute the delta; filter to rank ≤ 20 = target words; LLM renders per the report template.
+3. **Step 3: validate + render (script + LLM)** — script: each token → iTunes rank + popularity + difficulty; write today's snapshot to `data/aso_rank_snapshots.json`; compare against yesterday's snapshot to compute the delta; filter to rank ≤ 20 = target words; LLM renders per the report template.
 
 ## User intervention points (2)
 
@@ -52,7 +52,7 @@ The rendered report is in **Chinese** by design. Do not translate the rendered o
 ### Top one-liner (required)
 
 ```
-**昨天 ({MM-DD}) 数据 · 排名 = App Store 网页搜索 · 热度/难度 = Astro**
+**昨天 ({MM-DD}) 数据 · 排名 = App Store 网页搜索 · 热度/难度 = 内部指标**
 ```
 
 ### Per-app block (top 3 by 30-day downloads)
@@ -94,8 +94,8 @@ Sorting: **descending by popularity**, ties by ascending rank.
 | Keyword field | `data/apps_full.json` `versions[latest].localizations[picked_locale]` |
 | Candidate tokenization | **LLM semantic split** (not regex / jieba) |
 | Rank | iTunes Search Top-200 (same source as the App Store web page) |
-| Heat (1-99) | Astro `lookup_popularity_batch` (24h cache) |
-| Difficulty (1-99) | Astro, same as above |
+| Heat (1-99) | `keyword_local.lookup_popularity_batch` — backed by `data/keyword_reference_<region>.json` |
+| Difficulty (1-99) | same as above |
 | Δ vs yesterday | `data/aso_rank_snapshots.json` comparing today's/yesterday's snapshot |
 
 ## Why not regex / jieba tokenization
@@ -111,8 +111,6 @@ Sorting: **descending by popularity**, ties by ascending rank.
 | Parameter | Value | Note |
 |---|---|---|
 | `TARGET_RANK_CEILING` | 20 | rank ≤ this value enters the target keyword group (monitoring view) |
-| Astro popularity cache TTL | 24h | already-queried words do not re-consume Astro slots |
-| Astro anchor app | `appId=10` (iPhone placeholder) | avoids polluting real apps' tracking lists |
 | Top-N | 3 | default top 3 apps |
 
 ## CLI

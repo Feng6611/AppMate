@@ -34,7 +34,7 @@ from aso_report import (
 )
 from aso_daily import _good_token
 import appmate_config
-import astro_client
+import keyword_local
 
 APPS_FULL = appmate_config.data_path("apps_full.json")
 SALES_CACHE = appmate_config.data_path("sales_cache.json")
@@ -227,7 +227,7 @@ def cmd_analyze(query: str) -> int:
         return r
 
     def _pop(kws, store):
-        return astro_client.lookup_popularity_batch(kws, store)
+        return keyword_local.lookup_popularity_batch(kws, store)
 
     print(f"[analyze] {name} · market={country} · locale={info_loc}/{ver_loc} · 30d={dl30}", flush=True)
     payload = build_phase_a(
@@ -339,7 +339,7 @@ def cmd_validate(query: str, candidates_arg: str) -> int:
         return itunes_rank(kw, ctry, entity, bid, rank_cache)
 
     def _pop(kws, store):
-        return astro_client.lookup_popularity_batch(kws, store)
+        return keyword_local.lookup_popularity_batch(kws, store)
 
     print(f"[validate] {name} · market={country} · {len(candidates)} candidates", flush=True)
     payload = build_phase_b(

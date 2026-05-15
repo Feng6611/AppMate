@@ -218,7 +218,7 @@ def test_write_json_round_trip(tmp_path):
 def test_cmd_analyze_writes_phase_a(tmp_path, monkeypatch):
     """Run cmd_analyze end-to-end with mocked network. File appears with correct shape."""
     import aso_optimize_v2 as v2
-    import astro_client
+    import keyword_local
     import appmate_config
 
     # Point outputs at tmp_path
@@ -241,7 +241,7 @@ def test_cmd_analyze_writes_phase_a(tmp_path, monkeypatch):
     # Mock the two IO functions
     monkeypatch.setattr(v2, "itunes_rank",
                         lambda kw, country, entity, bid, cache=None: 1 if kw == "chrome" else None)
-    monkeypatch.setattr(astro_client, "lookup_popularity_batch",
+    monkeypatch.setattr(keyword_local, "lookup_popularity_batch",
                         lambda kws, store: {kw: {"popularity": 70, "difficulty": 50, "appsCount": 100} for kw in kws})
 
     # Also mock find_top_market to skip the 30-day rolling math
@@ -316,7 +316,7 @@ def test_build_phase_b_shape():
 
 def test_cmd_validate_writes_phase_b(tmp_path, monkeypatch):
     import aso_optimize_v2 as v2
-    import astro_client
+    import keyword_local
     import appmate_config
 
     monkeypatch.setattr(appmate_config, "DATA_DIR", tmp_path)
@@ -327,7 +327,7 @@ def test_cmd_validate_writes_phase_b(tmp_path, monkeypatch):
 
     monkeypatch.setattr(v2, "itunes_rank",
                         lambda kw, country, entity, bid, cache=None: 2 if kw == "谷歌地图" else None)
-    monkeypatch.setattr(astro_client, "lookup_popularity_batch",
+    monkeypatch.setattr(keyword_local, "lookup_popularity_batch",
                         lambda kws, store: {kw: {"popularity": 74, "difficulty": 25} for kw in kws})
 
     # find_top_market needs to return a market without real sales

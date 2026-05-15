@@ -22,7 +22,7 @@ description: Deep ASO optimization for a single app — produce new App Store ti
 | `data/apps_full.json` | Static metadata | script |
 | `data/sales_cache.json` | Sales report (find the main market) | script |
 | **iTunes Search Top-200** | Keyword ranking (same source as the App Store web page) | script |
-| **Astro MCP** | popularity (1-99) + difficulty (1-99) | script |
+| **Keyword reference table** | popularity (1-99) + difficulty (1-99) | script |
 | **LLM (Claude)** | Chinese tokenization / candidate generation / comparison / synthesis | conversation layer |
 | `references/aso-methodology.md` | Full methodology (§1-§12) | LLM reference |
 
@@ -68,7 +68,7 @@ Read the `current_metadata` field of `data/phase_a_<slug>.json` and **cut real A
 python3 scripts/aso_optimize_v2.py validate <app> --candidates <Step 2 output>
 ```
 
-- Each token → iTunes rank + Astro popularity + Astro difficulty.
+- Each token → iTunes rank + popularity + difficulty.
 - **No rank ≤ 20 filter** — full data.
 - Cap of 30 candidates per run; split into batches if you exceed it.
 

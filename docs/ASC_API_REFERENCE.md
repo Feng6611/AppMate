@@ -2,15 +2,14 @@
 
 Reference material for the data sources AppMate calls. For the step-by-step credential setup, use the `appmate-setup` skill (or the `/appmate-setup` command) instead.
 
-AppMate uses three external data sources, called through three Python clients in `scripts/`:
+AppMate uses two external data sources, called through Python clients in `scripts/`:
 
 | # | Data source | Provides | Client |
 |---|---|---|---|
 | 1 | Apple App Store Connect API | Metadata / sales & download reports / IAP & subscriptions / reviews / builds | `scripts/asc_client.py` |
-| 2 | Astro MCP (local stdio) | Keyword popularity (1-99) + difficulty (1-99) + ranking change | `scripts/astro_client.py` |
-| 3 | AppMate RAG API (remote HTTPS) | App Store competitor semantic search + AppMate S score | `scripts/appmate_rag_client.py` |
+| 2 | AppMate RAG API (remote HTTPS) | App Store competitor semantic search + AppMate S score | `scripts/appmate_rag_client.py` |
 
-> The Apple Search Ads API is no longer used — Apple retired the public keyword-popularity endpoints, so all popularity data comes from Astro. `scripts/search_ads_client.py` still ships but is dormant.
+Keyword popularity (1-99) and difficulty (1-99) come from a static reference table shipped with the plugin (`data/keyword_reference_<region>.json`), looked up via `scripts/keyword_local.py`.
 
 ---
 
@@ -57,45 +56,7 @@ GET  /v1/financeReports                    finance monthly report
 
 ---
 
-## 2. Astro MCP
-
-### Startup & connection
-
-- Started by the Astro desktop app on the local machine.
-- Listens on `http://127.0.0.1:8089/mcp` (configurable via `astro_endpoint` in `config/credentials.txt`).
-- JSON-RPC over HTTP.
-
-### Main MCP tools
-
-| Tool | Purpose |
-|---|---|
-| `list_apps` | List tracked apps |
-| `get_app_keywords(appId, store)` | Pull an app's tracked keywords + full data for a store |
-| `search_rankings(keyword, store)` | Query rankings for a tracked keyword |
-| `add_keywords(appId, [...], store)` | Add new words → returns popularity + difficulty + rank immediately |
-| `remove_keywords(appId, [...], store)` | Remove tracking |
-| `extract_competitors_keywords(seed, store)` | Scrape high-pop words from competitors |
-| `get_keyword_suggestions(appId, store)` | AI candidate keywords |
-| `search_app_store(keyword, store, limit)` | Search the App Store to see which apps rank first |
-
-### Core method: `lookup_popularity_batch` (in `scripts/astro_client.py`)
-
-```python
-results = lookup_popularity_batch(["翻译", "便签", "memo"], store="cn")
-# each word returns {keyword, popularity, difficulty, currentRanking, appsCount, was_tracked, fetched_at}
-```
-
-Internal "transient lookup" flow:
-1. Check the local cache (`data/astro_popularity_cache.json`, 24h TTL).
-2. Check whether the word is already tracked on the anchor app — if so, reuse it.
-3. Otherwise: `add_keywords` → `get_app_keywords` to capture full data → `remove_keywords` → cache.
-4. Never pollutes any real app's tracking slots.
-
-**Anchor app**: `appId=10`, a placeholder app ("iPhone"), used to add/remove transient words.
-
----
-
-## 3. AppMate RAG API
+## 2. AppMate RAG API
 
 See `docs/APPMATE_RAG_API.md` for the full endpoint and schema reference. In short:
 

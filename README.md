@@ -20,8 +20,8 @@ The design pattern throughout: scripts do the deterministic data work (API calls
 | Source | Provides | Client |
 |---|---|---|
 | Apple App Store Connect API | Metadata / sales reports / IAP / reviews / builds | `scripts/asc_client.py` |
-| Astro MCP (local) | Keyword popularity (1-99) + difficulty (1-99) + rank change | `scripts/astro_client.py` |
 | AppMate RAG API (remote) | App Store competitor semantic search | `scripts/appmate_rag_client.py` |
+| Static keyword reference | Keyword popularity (1-99) + difficulty (1-99) | `scripts/keyword_local.py` (data: `data/keyword_reference_<region>.json`) |
 
 See `docs/ASC_API_REFERENCE.md` and `docs/APPMATE_RAG_API.md` for details.
 

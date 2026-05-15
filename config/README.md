@@ -22,7 +22,6 @@ Everything in this folder is **gitignored** except `credentials.example.txt` and
 | `private_key_path` | yes | Download the `.p8` key when you generate the API key (it can only be downloaded once). Put the file in `config/` and point this at it. A repo-relative path like `config/AuthKey_XXXXXXXX.p8` is resolved against the plugin root; an absolute path also works. |
 | `vendor_number` | yes | App Store Connect → Payments and Financial Reports → the vendor number shown near the top |
 | `rag_base_url` | no | Defaults to `https://appmate.000ooo.ooo` (the public AppMate RAG BETA). Only set this to override. |
-| `astro_endpoint` | no | Defaults to `http://127.0.0.1:8089/mcp`. The Astro MCP server is started by the Astro desktop app running locally — keep that app open while running ASO workflows. |
 
 ## Notes
 

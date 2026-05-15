@@ -76,7 +76,3 @@ def asc_private_key_path() -> pathlib.Path:
 
 def rag_base_url() -> str:
     return _load_config().get("rag_base_url") or "https://appmate.000ooo.ooo"
-
-
-def astro_endpoint() -> str:
-    return _load_config().get("astro_endpoint") or "http://127.0.0.1:8089/mcp"

@@ -41,7 +41,6 @@ def test_load_config_parses_and_skips_comments(monkeypatch, tmp_path):
 def test_url_accessors_have_defaults(monkeypatch, tmp_path):
     cfg = _fresh(monkeypatch, tmp_path)
     assert cfg.rag_base_url() == "https://appmate.000ooo.ooo"
-    assert cfg.astro_endpoint() == "http://127.0.0.1:8089/mcp"
 
 
 def test_require_raises_pointing_to_setup(monkeypatch, tmp_path):

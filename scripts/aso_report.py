@@ -29,8 +29,6 @@ APPS_FULL = appmate_config.data_path("apps_full.json")
 SALES_CACHE = appmate_config.data_path("sales_cache.json")
 OUT = appmate_config.data_path("aso_report.md")
 RANK_CACHE = appmate_config.data_path("aso_rank_cache.json")
-POP_CACHE = appmate_config.data_path("aso_popularity_cache.json")
-SEARCH_ADS_CREDS = appmate_config.config_path("search_ads_credentials.txt")
 
 ITUNES_BASE = "https://itunes.apple.com/search"
 
@@ -74,14 +72,6 @@ def load_rank_cache() -> dict[str, Any]:
 
 def save_rank_cache(c: dict[str, Any]) -> None:
     RANK_CACHE.write_text(json.dumps(c, ensure_ascii=False, indent=2))
-
-
-def load_pop_cache() -> dict[str, Any]:
-    return json.loads(POP_CACHE.read_text()) if POP_CACHE.exists() else {}
-
-
-def save_pop_cache(c: dict[str, Any]) -> None:
-    POP_CACHE.write_text(json.dumps(c, ensure_ascii=False, indent=2))
 
 
 # ---------------------------------------------------------------------------
@@ -215,28 +205,6 @@ def rank_keyword(
 
 
 # ---------------------------------------------------------------------------
-# Apple Search Ads popularity stub
-# ---------------------------------------------------------------------------
-def search_ads_available() -> bool:
-    """Returns True once Search Ads credentials are configured. Stub for now."""
-    return SEARCH_ADS_CREDS.exists()
-
-
-def fetch_popularity(keyword: str, country: str, cache: dict[str, Any]) -> int | None:
-    """Apple Search Ads "Popularity Index" 1-99 for keyword in given storefront.
-
-    Stub: returns None until Search Ads credentials are configured.
-    See README section in this file's docstring for setup steps.
-    """
-    if not search_ads_available():
-        return None
-    # TODO: wire up once creds available.
-    #   POST https://api.searchads.apple.com/api/v5/keywords/recommendation
-    #   with bearer token + org id header
-    return None
-
-
-# ---------------------------------------------------------------------------
 # Per-country downloads
 # ---------------------------------------------------------------------------
 def is_download_ptid(ptid: str) -> bool:
@@ -331,7 +299,6 @@ def render_app_section(
     reports: dict[str, list[dict[str, str]]],
     data_today: dt.date,
     rank_cache: dict[str, Any],
-    pop_cache: dict[str, Any],
 ) -> list[str]:
     name = app["core"].get("name")
     bundle_id = app["core"].get("bundleId")
@@ -443,7 +410,6 @@ def main() -> int:
 
     reports = json.loads(SALES_CACHE.read_text())
     rank_cache = load_rank_cache()
-    pop_cache = load_pop_cache()
 
     lines: list[str] = []
     lines.append("# 🎯 ASO 关键词排名日报")
@@ -451,41 +417,18 @@ def main() -> int:
     lines.append(f"- 🕐 生成时间: **{dt.datetime.now():%Y-%m-%d %H:%M}**")
     lines.append(f"- 📅 下载数据日期: **{data_today:%Y-%m-%d}**")
     lines.append(f"- 🔍 排名: iTunes Search Top-200（与 App Store 网页版同源）")
-    lines.append(f"- 📊 搜索热度: {'✅ 已配置' if search_ads_available() else '⚠️ 未配置（需 Apple Search Ads API 凭证）'}")
     lines.append(f"- 📱 排名口径: 前 30 日下载量最高的 3 个上架 App")
     lines.append("")
     lines.append("---")
     lines.append("")
 
     for idx, app in enumerate(apps, 1):
-        lines.extend(render_app_section(idx, app, reports, data_today, rank_cache, pop_cache))
+        lines.extend(render_app_section(idx, app, reports, data_today, rank_cache))
         lines.append("---")
         lines.append("")
         save_rank_cache(rank_cache)
 
-    if not search_ads_available():
-        lines.append("## 📊 关于搜索热度数据")
-        lines.append("")
-        lines.append("当前未配置 Apple Search Ads API，因此无法展示每个关键词的搜索热度（Popularity Index 1-99）。")
-        lines.append("Astro / Sensor Tower / AppTweak 显示的热度数据，全部来自这同一个 API。")
-        lines.append("")
-        lines.append("**配置步骤**:")
-        lines.append("")
-        lines.append("1. 注册 / 登录 [Apple Search Ads](https://searchads.apple.com)（Account Holder 邀请加入）")
-        lines.append("2. 在 ASA UI 创建 API key → 拿到 `orgId / clientId / clientSecret`")
-        lines.append("3. 保存到 `search_ads_credentials.txt`，格式：")
-        lines.append("   ```")
-        lines.append("   org_id        = 1234567")
-        lines.append("   client_id     = SEARCHADS.xxxx")
-        lines.append("   client_secret = xxxxxx")
-        lines.append("   key_id        = xxxxxx")
-        lines.append("   private_key_path = /path/to/searchads.p8")
-        lines.append("   ```")
-        lines.append("4. 重新跑 `python3 aso_report.py`，热度列会自动出现")
-        lines.append("")
-
     save_rank_cache(rank_cache)
-    save_pop_cache(pop_cache)
     md = "\n".join(lines)
     OUT.write_text(md)
     print(f"\n[saved] {OUT}")

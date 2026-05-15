@@ -338,11 +338,11 @@ def analyze_app(
         universe[kw]["rank"] = pos
         time.sleep(0.12)
 
-    # Fetch popularity + difficulty from Astro for the same keyword universe
-    import astro_client
+    # Fetch popularity + difficulty for the same keyword universe
+    import keyword_local
     store_code = country.lower()
-    print(f"  fetching Astro popularity for {len(universe)} keywords in {store_code}…", flush=True)
-    pop_map = astro_client.lookup_popularity_batch(list(universe), store_code)
+    print(f"  fetching popularity for {len(universe)} keywords in {store_code}…", flush=True)
+    pop_map = keyword_local.lookup_popularity_batch(list(universe), store_code)
     for kw, slot in universe.items():
         rec = pop_map.get(kw) or {}
         slot["popularity"] = rec.get("popularity")
@@ -369,8 +369,8 @@ def analyze_app(
 # Render
 # ---------------------------------------------------------------------------
 def _classify(slot: dict[str, Any]) -> tuple[str, str]:
-    """(emoji, label) — actionable category. Uses Astro popularity (1-99) as the
-    canonical heat signal; iTunes Suggestions only as a fallback hint."""
+    """(emoji, label) — actionable category. Uses the popularity (1-99) signal
+    from the keyword reference; iTunes Suggestions only as a fallback hint."""
     rank = slot["rank"]
     pop = slot.get("popularity") or 0
     diff = slot.get("difficulty") or 0
@@ -413,7 +413,7 @@ def render(results: list[dict[str, Any]], data_today: dt.date) -> str:
     lines.append(f"- 🕐 生成时间: **{dt.datetime.now():%Y-%m-%d %H:%M}**")
     lines.append(f"- 📅 销售数据日期: **{data_today:%Y-%m-%d}**")
     lines.append(f"- 📊 排名: iTunes Search Top-200（与 App Store 网页版同源）")
-    lines.append(f"- 🔥 热度 / 难度: Astro（Apple Search Ads Popularity Index 1-99）")
+    lines.append(f"- 🔥 热度 / 难度: 内部指标（1-99）")
     lines.append("")
     lines.append("> 来源 — **T**: 主标题 · **S**: 副标题 · **K**: 关键词字段 · **X**: Apple Suggestions 新发现")
     lines.append("> 难度: ≥70 🔴 难, 50-69 🟡 中, <50 🟢 易")
