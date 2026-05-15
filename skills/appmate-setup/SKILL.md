@@ -22,26 +22,48 @@ Install two external data-source credentials into a gitignored `config/` folder,
 
 ## ⚠ API key role selection (read this BEFORE generating the key)
 
-AppMate is a **read-only** analytics tool. The App Store Connect API key it uses must NOT have any write-capable role, otherwise a buggy script or a hallucinated tool call could damage live App Store data, builds, or banking. AppMate enforces this with a runtime role probe (`scripts/key_safety.py`); a key with the wrong roles will be refused on the first invocation.
+AppMate is a **read-only** analytics tool. The App Store Connect API key it uses must NOT have any write-capable role, otherwise a buggy script or a hallucinated tool call could damage live App Store data, builds, or banking.
 
-When creating the API key in **App Store Connect → Users and Access → Integrations → App Store Connect API**, check **ONLY** these three role checkboxes:
+Two layers of defense enforce this:
+1. **Setup-time:** the runtime probe in `scripts/key_safety.py` refuses to start any workflow if it detects a Developer / Finance / Admin role on the key.
+2. **Runtime:** `scripts/asc_client.py` blocks every non-GET HTTP method (POST / PUT / PATCH / DELETE) unless `APPMATE_ALLOW_WRITES=1` is set — workflows never set this, so writes are physically impossible from AppMate's own code.
 
-| Allowed role | Why AppMate needs it | Apple's UI label |
-|---|---|---|
-| ✅ Sales and Reports | reads `/v1/salesReports` for the daily report | "Sales and Reports" / "销售和报告" |
-| ✅ Customer Support | reads `/v1/customerReviews` for the feature ideation flow | "Customer Support" / "客户支持" |
-| ✅ Marketing | reads analytics surface used by the growth flow | "Marketing" / "营销" |
+When creating the API key in **App Store Connect → Users and Access → Integrations → App Store Connect API**, check **ONLY** read-only roles:
+
+| Allowed role (Apple UI label) | Why AppMate needs it |
+|---|---|
+| ✅ Sales / 销售 | reads `/v1/salesReports` for the daily report |
+| ✅ Access to Reports / 访问报告 | broader read access (sales + analytics + finance reports) |
+| ✅ Customer Support / 客户支持 | reads `/v1/customerReviews` for the feature ideation flow |
+| ✅ Marketing / 营销 | reads marketing / analytics surface used by the growth flow |
 
 **Do NOT check any of these** — they grant write access to live App Store data and AppMate will refuse to start:
 
 | Refused role | Why it is dangerous |
 |---|---|
-| ❌ Admin / 管理 | full write to every ASC surface — including users, billing, app data |
-| ❌ Developer / 开发者 | can upload builds, modify certificates and provisioning profiles |
-| ❌ App Manager / App 管理 | can modify app metadata, screenshots, pricing, ratings |
+| ❌ Admin / 管理 | full write to every ASC surface — users, billing, app data, banking |
+| ❌ Developer / 开发者 | can upload builds, modify certificates / identifiers / provisioning profiles |
+| ❌ App Manager / App 管理 | can modify app metadata, screenshots, pricing, in-app purchases |
 | ❌ Finance / 财务 | can modify banking, tax, financial routing |
 
-The runtime probe runs `GET /v1/users`, `GET /v1/builds`, and `GET /v1/financeReports` on first startup, caches the verdict in `data/key_safety.json` for 7 days, and stops every workflow if any of the four refused roles is detected. If you regenerate the key, delete the cache file to force a fresh probe.
+### How the probe works
+
+`scripts/key_safety.py` runs two GETs on startup and caches the verdict in `data/key_safety.json` for 7 days:
+
+| Probe | Status → conclusion |
+|---|---|
+| `GET /v1/bundleIds` | 200 → key has Developer or Admin (refuse); 403 → does not |
+| `GET /v1/financeReports` | 200 / 404 → key has Finance or Admin (refuse); 403 → does not |
+
+If you regenerate the key, delete `data/key_safety.json` to force a fresh probe.
+
+### Known limitation — the App Manager probe gap
+
+Apple's role permissions gate **writes**, not reads. Most GET endpoints (including `/v1/users` and `/v1/builds`) are readable by any role that has any API access at all, so they're useless as Admin / App Manager probes. The two probes above target endpoints that *are* gated at the read layer (Developer / Finance domain endpoints) — they correctly catch Developer, Finance, and Admin.
+
+**App Manager cannot be distinguished from read-only roles through GET endpoints.** An App Manager-only key would pass the probe but could still modify app metadata. Two compensating defenses cover the gap:
+- The role-selection guidance above (always-on documentation at the only point where it matters — key creation).
+- The `APPMATE_ALLOW_WRITES` block in `asc_client.py`: even if an App Manager key slips through, AppMate's own scripts cannot issue a single write call.
 
 ## Config model
 
@@ -79,9 +101,9 @@ Run from the plugin repo root:
 ```bash
 # 0. Universal gate — offline credential validation + online key-role probe.
 #    Exits 0 only when every required field is set, the .p8 file exists,
-#    AND the API key has none of the refused roles. The role probe hits
-#    /v1/users, /v1/builds, /v1/financeReports and caches the verdict in
-#    data/key_safety.json for 7 days.
+#    AND the API key has none of Developer / Finance / Admin (probed via
+#    /v1/bundleIds and /v1/financeReports). Verdict cached for 7 days in
+#    data/key_safety.json.
 python3 scripts/appmate_config.py check
 
 # 1. ASC API — should print a JWT prefix
@@ -96,7 +118,7 @@ python3 scripts/appmate_rag_client.py health
 
 Check 0 is the **universal gate**: every downstream workflow script (`sales_report.py`, `aso_daily.py`, `aso_optimize_v2.py`, `growth_strategy.py`, `feature_ideate.py`) calls `key_safety.require_safe_key_or_exit()` at the top of `main()`, which combines the offline credential check and the role probe. Each `/appmate-*` command also runs this check before invoking its skill.
 
-If check 0 reports the key as **UNSAFE**, stop immediately: revoke the key in App Store Connect, generate a new one with only Sales and Reports / Customer Support / Marketing, replace the `.p8` + `key_id`, delete `data/key_safety.json`, and re-run check 0. AppMate will not run a single workflow while an unsafe key is configured.
+If check 0 reports the key as **UNSAFE**, stop immediately: revoke the key in App Store Connect, generate a new one with only read-only roles (Sales / Access to Reports / Customer Support / Marketing), replace the `.p8` + `key_id`, delete `data/key_safety.json`, and re-run check 0. AppMate will not run a single workflow while an unsafe key is configured.
 
 All 4 green = every downstream workflow (`sales-daily-report`, `aso-daily-report`, `aso-optimize`, `feature-ideation`, `growth-strategy`) can run.
 

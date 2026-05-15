@@ -7,22 +7,38 @@ and refuses to operate when any write-capable role is granted.
 
 Role policy
 -----------
-Safe (read-only or scoped):
-  * Sales and Reports     — read sales / downloads via /v1/salesReports
-  * Customer Support      — read customer reviews
-  * Marketing             — read analytics / marketing data
+Safe (read-only):
+  * Sales and Reports / Access to Reports — read sales / downloads
+  * Customer Support                      — read customer reviews
+  * Marketing                             — read analytics / marketing data
 
 Refused (write access to live ASC data — STOP SERVICE):
   * Admin                 — full write: users, billing, anything
   * App Manager           — modify app metadata, screenshots, pricing
-  * Developer             — upload builds, modify certificates
+  * Developer             — upload builds, modify certificates / identifiers
   * Finance               — modify banking, tax, financial routing
 
 Probe matrix
 ------------
-  /v1/users                  200 -> Admin role
-  /v1/builds                 200 -> Developer or App Manager (or Admin)
-  /v1/financeReports         200/404 -> Finance role (or Admin); 403 -> not Finance
+  /v1/bundleIds              200 -> Developer (or Admin)
+  /v1/financeReports         200/404 -> Finance (or Admin); 403 -> not Finance
+
+Caveats
+-------
+The probes above reliably detect Admin, Developer, and Finance — all three are
+gated by Apple at the *read* layer for endpoints owned by Developer / Finance
+domains. App Manager, however, cannot be distinguished from read-only roles
+through GET endpoints because Apple gates App Manager writes (POST/PATCH on
+appStoreVersions, inAppPurchases, etc.) without restricting metadata reads.
+Earlier probes against /v1/users and /v1/builds were *false positives* — Sales
+and Marketing roles can read those endpoints.
+
+The App-Manager gap is covered by two other defenses:
+  1. The setup skill / commands / README instruct users to check ONLY Sales /
+     Customer Support / Marketing when generating the key.
+  2. ``scripts/asc_client.py`` refuses to issue any non-GET HTTP method unless
+     ``APPMATE_ALLOW_WRITES=1`` is set — so even if App Manager slips through
+     the probe, AppMate's own code cannot make a write call.
 
 Results are cached in data/key_safety.json for 7 days so the probe runs at most
 once per week. Network failures are *not* cached — the probe is retried next
@@ -69,9 +85,8 @@ CACHE_PATH: pathlib.Path = appmate_config.DATA_DIR / "key_safety.json"
 _FINANCE_PROBE_DATE = "2024-01"
 
 UNSAFE_ROLES: dict[str, str] = {
-    "ADMIN": "Admin — full write access (users, billing, app data)",
-    "APP_MANAGER_OR_DEVELOPER": "App Manager / Developer — can modify app metadata, upload builds",
-    "FINANCE": "Finance — can modify banking, tax, financial routing",
+    "DEVELOPER_OR_ADMIN": "Developer or Admin — can upload builds, modify certificates and identifiers",
+    "FINANCE_OR_ADMIN": "Finance or Admin — can modify banking, tax, financial routing",
 }
 
 ROLE_SELECTION_GUIDANCE = (
@@ -115,9 +130,15 @@ def _probe(path: str, params: dict[str, Any] | None = None, retries: int = 2) ->
 
 
 def detect_elevated_roles() -> dict[str, Any]:
-    """Run the probe set. Returns a structured result; does not cache."""
-    users_status = _probe("/v1/users", {"limit": "1"})
-    builds_status = _probe("/v1/builds", {"limit": "1"})
+    """Run the probe set. Returns a structured result; does not cache.
+
+    Probes:
+      * /v1/bundleIds      200 -> Developer or Admin
+      * /v1/financeReports 200/404 -> Finance or Admin; 403 -> not Finance/Admin
+
+    See module docstring for the role policy and the App Manager caveat.
+    """
+    bundle_ids_status = _probe("/v1/bundleIds", {"limit": "1"})
     finance_status = _probe(
         "/v1/financeReports",
         {
@@ -128,26 +149,21 @@ def detect_elevated_roles() -> dict[str, Any]:
         },
     )
 
-    probe_failed = any(s == -1 for s in (users_status, builds_status, finance_status))
+    probe_failed = any(s == -1 for s in (bundle_ids_status, finance_status))
 
-    admin = users_status == 200
-    # /v1/builds is also visible to Admin, so only attribute "App Manager or Developer"
-    # when the key is NOT already Admin (avoids double-counting).
-    app_mgr_or_dev = builds_status == 200 and not admin
-    # /v1/financeReports also visible to Admin; attribute Finance only when not Admin.
-    # 200 = report exists; 404 = no data for that date (still authorized); 403 = denied.
-    finance = finance_status in (200, 404) and not admin
+    developer_or_admin = bundle_ids_status == 200
+    # /v1/financeReports: 200 = report exists; 404 = no data for that date
+    # but the call was authorized; 403 = denied (role lacks Finance/Admin).
+    finance_or_admin = finance_status in (200, 404)
 
     roles = {
-        "ADMIN": admin,
-        "APP_MANAGER_OR_DEVELOPER": app_mgr_or_dev,
-        "FINANCE": finance,
+        "DEVELOPER_OR_ADMIN": developer_or_admin,
+        "FINANCE_OR_ADMIN": finance_or_admin,
     }
     return {
         "roles": roles,
         "probe": {
-            "/v1/users": users_status,
-            "/v1/builds": builds_status,
+            "/v1/bundleIds": bundle_ids_status,
             "/v1/financeReports": finance_status,
         },
         "probe_failed": probe_failed,

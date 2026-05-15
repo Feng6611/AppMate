@@ -38,13 +38,18 @@ Run `/appmate-setup` inside Claude Code. It walks you through the four credentia
 >
 > AppMate is a read-only analytics tool. **The key you create must NOT have any write access to App Store Connect**, or one buggy script / hallucinated tool call could damage your live app data, builds, or banking info.
 >
-> When generating the key in App Store Connect → Users and Access → Integrations → App Store Connect API, **check ONLY these roles**:
+> When generating the key in App Store Connect → Users and Access → Integrations → App Store Connect API, **check ONLY read-only roles**:
 >
-> - ☑ **Sales and Reports** (read sales / downloads)
-> - ☑ **Customer Support** (read reviews)
-> - ☑ **Marketing** (read analytics)
+> - ☑ **Sales / 销售** (read sales / downloads)
+> - ☑ **Access to Reports / 访问报告** (read sales + analytics + finance reports)
+> - ☑ **Customer Support / 客户支持** (read reviews)
+> - ☑ **Marketing / 营销** (read analytics)
 >
-> **Do NOT check** any of: **Admin · Developer · App Manager · Finance**. These grant write access to live App Store data, build uploads, app metadata, or banking. AppMate will **detect** any of these via an API role probe on startup and **refuse to run** — pretty messages, but you have already burned the time and you will be told to revoke the key and start over. Save yourself the trip.
+> **Do NOT check** any of: **Admin · Developer · App Manager · Finance**. These grant write access to live App Store data, build uploads, app metadata, or banking.
+>
+> AppMate enforces this in two layers:
+> 1. A runtime **role probe** (`scripts/key_safety.py`) checks `GET /v1/bundleIds` and `GET /v1/financeReports`. The probe catches Developer / Finance / Admin and refuses to start any workflow with that key. **It cannot catch App Manager** — Apple's permission model gates App Manager writes but not metadata reads — so the role checkbox guidance above is the only defense against an accidental App Manager key.
+> 2. A code-level **write block** in `scripts/asc_client.py`: POST/PUT/PATCH/DELETE methods refuse to fire unless `APPMATE_ALLOW_WRITES=1` is set in the environment. None of AppMate's workflows ever set this, so even an over-privileged key cannot trigger a write call from our code.
 
 If you want to do setup by hand instead:
 
@@ -58,7 +63,7 @@ Then edit `config/credentials.txt` and fill in:
 | Field | Where to get it |
 |---|---|
 | `issuer_id` | App Store Connect → Users and Access → Integrations → App Store Connect API → "Issuer ID" at the top |
-| `key_id` | Same page → the Key ID column of the API key you create (with **only Sales and Reports / Customer Support / Marketing** roles checked — see the warning above) |
+| `key_id` | Same page → the Key ID column of the API key you create (with **only read-only roles** checked — see the warning above) |
 | `private_key_path` | Drop the `.p8` file you downloaded when creating the API key into `config/`, then point this field at it (e.g. `config/AuthKey_XXXXXXXX.p8`) |
 | `vendor_number` | App Store Connect → Payments and Financial Reports → vendor number near the top |
 
@@ -170,7 +175,7 @@ python3 -m pytest
 | `analytics report request returned 403` | App Analytics sharing is not enabled in your App Store Connect web UI — separate authorization step. |
 | Apple sales report shows "暂无" for today | Apple's daily report lags 1-2 days; the script auto-anchors to the most recent day with data. Re-run tomorrow. |
 | `fuzzy match` finds the wrong app | Pass the exact App Store ID or bundle ID instead of a name. |
-| `AppMate refuses to run — the configured API key has write access` | Your API key has one of the refused roles (Admin / Developer / App Manager / Finance). Revoke the key in App Store Connect, generate a new one with **only Sales and Reports / Customer Support / Marketing**, replace the `.p8` and `key_id`, delete `data/key_safety.json`, re-run `python3 scripts/appmate_config.py check`. |
+| `AppMate refuses to run — the configured API key has write access` | Your API key has Developer / Finance / Admin (caught by the probe) or App Manager (caught by the docs). Revoke the key in App Store Connect, generate a new one with **only read-only roles** (Sales / Access to Reports / Customer Support / Marketing), replace the `.p8` and `key_id`, delete `data/key_safety.json`, re-run `python3 scripts/appmate_config.py check`. |
 | `Could not reach App Store Connect to verify key roles` | Network error during the role probe. AppMate will not start without a successful probe — fix connectivity and retry. |
 
 ---

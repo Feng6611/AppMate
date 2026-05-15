@@ -4,6 +4,11 @@ Reads credentials via appmate_config (config/credentials.txt) and exposes:
   - apps()              list all apps on the account
   - sales_report(...)   download a Sales/Subscription report (gzipped TSV -> DataFrame-like list)
   - finance_report(...) download a Finance report
+
+Write methods (post / put / patch / delete) are blocked by default — they
+raise PermissionError unless APPMATE_ALLOW_WRITES=1 is set in the environment.
+AppMate's read-only workflows never need to write, so this opt-in flag is the
+defense-in-depth that catches over-privileged keys the role probe couldn't.
 """
 from __future__ import annotations
 
@@ -11,6 +16,7 @@ import datetime as dt
 import gzip
 import io
 import json
+import os
 import pathlib
 import sys
 import time
@@ -20,6 +26,27 @@ import jwt
 import requests
 
 import appmate_config
+
+WRITE_OPT_IN_ENV = "APPMATE_ALLOW_WRITES"
+
+
+def _require_write_opt_in(method: str) -> None:
+    """Defense-in-depth: refuse non-GET HTTP methods unless the user has
+    explicitly opted in via APPMATE_ALLOW_WRITES=1.
+
+    Workflows that ship with AppMate never need writes. This blocks LLM
+    hallucinations, accidental new code paths, and over-privileged keys from
+    issuing destructive calls against live App Store Connect data.
+    """
+    if os.environ.get(WRITE_OPT_IN_ENV) == "1":
+        return
+    raise PermissionError(
+        f"asc_client.{method}() is disabled by default. AppMate workflows are "
+        f"read-only; if you really need to issue a write request, set "
+        f"{WRITE_OPT_IN_ENV}=1 in your shell — and only after auditing the "
+        f"call site. The runtime block exists so an over-privileged key (or a "
+        f"hallucinated tool call) cannot damage your live App Store data."
+    )
 
 BASE_URL = "https://api.appstoreconnect.apple.com"
 
@@ -61,6 +88,7 @@ def get(path: str, params: dict[str, Any] | None = None, retries: int = 5) -> re
 
 
 def post(path: str, body: dict[str, Any], retries: int = 3) -> requests.Response:
+    _require_write_opt_in("post")
     url = path if path.startswith("http") else f"{BASE_URL}{path}"
     headers = {**_auth_headers(), "Content-Type": "application/json"}
     last_exc: Exception | None = None
