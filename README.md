@@ -1,79 +1,137 @@
 # AppMate
 
-A **Claude Code plugin** — an App Store Connect operations toolkit for indie developers. Python data-layer scripts plus LLM-driven skills that cover sales reporting, ASO optimization, ASO daily monitoring, feature ideation, and growth strategy.
+A **Claude Code plugin** — an App Store Connect operations toolkit for indie developers. Python data-layer scripts plus LLM-driven skills that cover **sales reporting, ASO optimization, ASO daily monitoring, feature ideation, and growth strategy**.
 
-The design pattern throughout: scripts do the deterministic data work (API calls, caching, rank lookups); the LLM (Claude, via the skills) does everything that needs semantic judgment (Chinese tokenization, candidate generation, strategy reasoning, report rendering). Each workflow involves the user only at the start and the end.
+Design pattern: scripts do the deterministic data work (API calls, caching, rank lookups); the LLM does everything that needs semantic judgment (Chinese tokenization, candidate generation, strategy reasoning, report rendering). Each workflow involves you only at the start and the end.
 
-## Workflows
+---
 
-| Command | Skill | What it does |
-|---|---|---|
-| `/appmate-setup` | `appmate-setup` | Set up / troubleshoot credentials and config; run the self-check |
-| `/appmate-sales` | `sales-daily-report` | Sales & downloads daily report for all live apps, across 5 time dimensions |
-| `/appmate-aso-optimize <app>` | `aso-optimize` | Deep ASO optimization for one app — new title / subtitle / keyword strings |
-| `/appmate-aso-daily` | `aso-daily-report` | Keyword-ranking daily report for the top-3 apps by downloads |
-| `/appmate-feature-ideas <app>` | `feature-ideation` | Prioritized feature recommendations from reviews + competitor evidence |
-| `/appmate-growth <app>` | `growth-strategy` | Stage-diagnosed growth strategy — phase diagnosis + 3-5 actionable strategies |
+## Install (Claude Code)
 
-## Data sources
+Inside Claude Code, run:
 
-| Source | Provides | Client |
-|---|---|---|
-| Apple App Store Connect API | Metadata / sales reports / IAP / reviews / builds | `scripts/asc_client.py` |
-| AppMate RAG API (remote) | App Store competitor semantic search | `scripts/appmate_rag_client.py` |
-| Static keyword reference | Keyword popularity (1-99) + difficulty (1-99) | `scripts/keyword_local.py` (data: `data/keyword_reference_<region>.json`) |
+```
+/plugin marketplace add fengyiqicoder/AppMate
+/plugin install appmate@appmate-marketplace
+```
 
-See `docs/ASC_API_REFERENCE.md` and `docs/APPMATE_RAG_API.md` for details.
+That's the whole install. The plugin pulls itself from GitHub, registers the six `/appmate-*` slash commands, and loads the six skills.
 
-## Install
+Then install the Python data-layer dependencies (App Store Connect API client uses PyJWT + cryptography):
 
 ```bash
-# add this repo as a Claude Code plugin marketplace, then enable the "appmate" plugin
-claude plugin marketplace add <github-url-of-this-repo>
-
-# install the Python dependencies (from the plugin repo root)
+# in the plugin repo directory that Claude Code cloned for you
 pip install -r requirements.txt
 ```
 
-## Setup
+To find that directory, run `/plugin` inside Claude Code and look at the path next to `appmate`. The default is `~/.claude/plugins/marketplaces/appmate-marketplace/plugins/appmate/`.
 
-Run `/appmate-setup` and follow it, or do it manually:
+> **Python**: tested on 3.10+. No virtualenv required — the three dependencies are tiny.
+
+---
+
+## Setup (one-time, ~3 min)
+
+Run `/appmate-setup` inside Claude Code. It walks you through the four credential fields and runs a 3-point self-check.
+
+If you want to do it by hand instead:
 
 ```bash
+# from the plugin directory
 cp config/credentials.example.txt config/credentials.txt
-# fill in issuer_id / key_id / private_key_path / vendor_number,
-# and drop your App Store Connect .p8 key into config/
 ```
 
-`config/` (secrets) and `data/` (caches + generated reports) are gitignored — nothing private ever gets committed. See `config/README.md` for the field guide. To keep `config/` and `data/` outside the plugin repo, set the `APPMATE_HOME` environment variable.
+Then edit `config/credentials.txt` and fill in:
 
-## Usage
+| Field | Where to get it |
+|---|---|
+| `issuer_id` | App Store Connect → Users and Access → Integrations → App Store Connect API → "Issuer ID" at the top |
+| `key_id` | Same page → the Key ID column of the API key you create |
+| `private_key_path` | Drop the `.p8` file you downloaded when creating the API key into `config/`, then point this field at it (e.g. `config/AuthKey_XXXXXXXX.p8`) |
+| `vendor_number` | App Store Connect → Payments and Financial Reports → vendor number near the top |
+
+Run the self-check from the plugin root to confirm everything works:
+
+```bash
+# 1. ASC API JWT — should print "..." after a JWT prefix
+python3 scripts/asc_client.py token | head -c 30 && echo "..."
+
+# 2. ASC API live call — should list your account's apps
+python3 -c "import sys; sys.path.insert(0,'scripts'); from asc_client import apps; print(f'{len(apps())} apps')"
+
+# 3. AppMate RAG (public BETA) — should return {"status":"ok"}
+python3 scripts/appmate_rag_client.py health
+```
+
+All three green = every workflow can run.
+
+> **What's gitignored**: everything under `config/` (your credentials + .p8 key) and most of `data/` (caches + generated reports). The two static `data/keyword_reference_<region>.json` tables that ship with the plugin are the only exceptions. To keep `config/` and `data/` outside the plugin directory, set `APPMATE_HOME` to a folder you control.
+
+---
+
+## The 6 workflows
+
+| Command | What it does | Typical runtime |
+|---|---|---|
+| `/appmate-setup` | Set up / troubleshoot credentials. Run once. | ~3 min |
+| `/appmate-sales` | Sales & downloads daily report — all live apps, 5 time dimensions (yesterday / 7d / 30d / this week / this month). Auto-anchors to the last day Apple actually has data for. | ~30 s |
+| `/appmate-aso-optimize <app>` | Deep ASO optimization for one app. Produces three paste-ready strings (title 30 char / subtitle 30 char / keywords 100 char) per a ten-section methodology with §-numbered rules. Outputs an OLD vs NEW table and an addition/deletion checklist with `pop / diff / rank` columns. | ~2 min |
+| `/appmate-aso-daily` | Keyword-ranking daily report for your top-3 apps by 30-day downloads. LLM-tokenizes each app's title / subtitle / keywords, checks rank via iTunes Search Top-200, filters to rank ≤ 20, diffs against yesterday's snapshot. | ~1 min |
+| `/appmate-feature-ideas <app>` | Prioritized feature recommendations for one app, built from review negatives + wishlist signals + top-10 competitor evidence. Two sentences per idea (what + why), no jargon, no scores shown. | ~1 min |
+| `/appmate-growth <app>` | Stage-diagnosed growth strategy (cold start / early growth / plateau / decline). 3-5 strategies, each with 4 executable steps and a measurement step. | ~1 min |
+
+App arguments accept **App Store ID / bundle ID / SKU / fuzzy name match**.
+
+### Concrete usage
 
 ```
 /appmate-sales
 /appmate-aso-optimize Sticky Note Pro
-/appmate-feature-ideas com.fengyiqi.PostItnoteForMac
+/appmate-aso-optimize com.fengyiqi.PostItnoteForMac
+/appmate-aso-optimize 1482080766
+/appmate-aso-daily
+/appmate-feature-ideas Sticky Note Pro
 /appmate-growth 1482080766
 ```
 
-App arguments accept App Store ID / bundle ID / SKU / fuzzy name match.
+All reports are rendered as **Chinese markdown** by design (the formatting conventions are tuned for Chinese ASO and Chinese App Store reporting). The source code, commit messages, and this README are in English so any maintainer can read them.
+
+---
+
+## Data sources
+
+| Source | Provides | Setup |
+|---|---|---|
+| **Apple App Store Connect API** | Metadata / sales & download reports / IAP & subscriptions / reviews / builds | Required — the four credentials above |
+| **AppMate RAG API** (remote HTTPS) | App Store competitor semantic search + AppMate S score | None — public BETA, no key needed |
+| **Static keyword reference** | Keyword popularity (1-99) + difficulty (1-99) + apps_count | Ships with the plugin — `data/keyword_reference_<region>.json` |
+
+Current static reference coverage:
+
+| Region | Keywords | Real signal |
+|---|---:|---:|
+| CN | 2417 | 1025 |
+| US | 2093 | 1485 |
+
+See `docs/ASC_API_REFERENCE.md` and `docs/APPMATE_RAG_API.md` for the full endpoint references.
+
+---
 
 ## Repository layout
 
 ```
-.claude-plugin/   plugin.json + marketplace.json
-skills/           6 skills (English process docs; aso-optimize ships the methodology reference)
+.claude-plugin/   plugin.json + marketplace.json — Claude Code plugin manifests
 commands/         6 /appmate-* slash commands
-scripts/          17 Python scripts (data layer) + appmate_config.py
+skills/           6 skills (English process docs; aso-optimize ships
+                  a 671-line methodology reference in references/)
+scripts/          15 Python scripts (data layer + entry points) + appmate_config.py
 config/           gitignored — credentials + .p8 keys (ships only the example + README)
-data/             gitignored — caches, snapshots, generated reports
-docs/             API reference docs + superpowers specs/plans
-tests/            pytest suite
+data/             gitignored except for the two keyword_reference tables
+docs/             ASC API reference + AppMate RAG reference + design specs / plans
+tests/            pytest suite (86 cases, runs in <0.2s)
 ```
 
-## A note on language
-
-Source code and all repository documentation are in **English**. The **reports the workflows generate are in Chinese by design** — the sales / ASO / feature / growth deliverables follow established Chinese formatting conventions, and the skills instruct Claude (in English) to produce that Chinese output.
+---
 
 ## Development
 
@@ -82,4 +140,22 @@ pip install pytest
 python3 -m pytest
 ```
 
-`appmate_config.py` loads credentials lazily, so the full test suite and a fresh checkout import cleanly with no credentials present.
+`scripts/appmate_config.py` resolves paths eagerly but loads credentials lazily — a missing `config/credentials.txt` will not crash imports or the test suite. A workflow that actually needs a credential raises a clear error pointing back to setup.
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `/appmate-*` commands not appearing in Claude Code | `/plugin install appmate@appmate-marketplace` did not finish; re-run it. Or check `/plugin` to confirm the plugin is enabled. |
+| `ModuleNotFoundError: No module named 'jwt'` | `pip install -r requirements.txt` from the plugin directory. |
+| `analytics report request returned 403` | App Analytics sharing is not enabled in your App Store Connect web UI — separate authorization step. |
+| Apple sales report shows "暂无" for today | Apple's daily report lags 1-2 days; the script auto-anchors to the most recent day with data. Re-run tomorrow. |
+| `fuzzy match` finds the wrong app | Pass the exact App Store ID or bundle ID instead of a name. |
+
+---
+
+## License & contributing
+
+Personal project by [@fengyiqicoder](https://github.com/fengyiqicoder). PRs welcome for new ASO tactics, additional data sources, or workflow polish. Open an issue first for anything large.
