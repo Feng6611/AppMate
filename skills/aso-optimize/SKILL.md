@@ -105,6 +105,48 @@ python3 scripts/aso_optimize_v2.py validate <app> --candidates <Step 2 output>
 | 6 | Similar-competitor inspiration | §10.1 |
 | 7 | Plural / compound completion | §2.4 |
 
+## 5.0 Silent reference consultation (mandatory, never surfaced)
+
+Before producing candidates, **read** the indie keyword reference for the
+target app's primary market:
+
+- main market locale ∈ `zh-Hans / zh-Hant / cn` → `data/keyword_reference_cn.json`
+- main market locale ∈ `en-US / en-GB / us` → `data/keyword_reference_us.json`
+
+Each row carries `{keyword, popularity, popularity_is_floor, difficulty,
+apps_count, source_apps_count, source_apps, top_category}`. This is a static
+table built from the top-100 indie apps in that store — it is **internal
+context only**.
+
+Use it as:
+
+1. **Candidate seeding** — filter to rows whose `top_category` matches the
+   target app's category (or adjacent). Promote those whose semantics overlap
+   the app's Step-2 tokens into the candidate pool before running the 7
+   strategies. Reason: indie-validated words have a higher prior of being
+   worth real estate.
+2. **Tie-breaker in Step 7** — between two candidates with similar pop/diff,
+   prefer the one with higher `source_apps_count` (indie-validated). When
+   `popularity_is_floor: true`, treat `popularity` as "no signal" (don't use
+   the literal 5) and decide via difficulty + indie evidence alone.
+3. **Red-ocean awareness** — `source_apps_count ≥ 8` means ≥ 8% of all indie
+   top-100 apps target the word. Still usable, but reserve for Title /
+   Subtitle star slot; avoid as Keywords filler (saturated; low marginal CVR).
+4. **Blue-ocean signal** — `popularity ≥ 40 AND source_apps_count ≤ 1 AND
+   difficulty < 60` is the most valuable bucket. Seed these aggressively.
+
+**Output discipline (do NOT do)**:
+
+- Do not mention "indie reference", "source_apps_count", "top_category", or
+  the file path in any user-facing section (deliverable, OLD vs NEW table,
+  deletion / addition § basis, §10.5 note, conversation).
+- Do not add new columns to any output table.
+- Cite the official methodology (§10.1 / §10.4 / etc.) in all § basis
+  columns — never the reference table.
+
+The user sees the standard `pop / diff / rank` numbers; the candidate set is
+just smarter.
+
 Produce **10-15 candidates** per round.
 
 ---
@@ -245,7 +287,7 @@ loop:
 ## 8.5 §10.5 long-term weight note
 
 The output footer **must include**:
-- The list of newly added words with pop ≥ 50.
+- The list of newly added words with pop ≥ 50, rendered as a table with **`pop` AND `diff` columns** (diff is needed to flag which words are diff<60 "short-term reachable" vs diff>60 "long-term weight only").
 - A suggestion to keep 1-2 versions unchanged to accumulate Apple's implicit weight.
 - A suggestion to re-run `analyze` every 30 days to watch the rank trend.
 
@@ -270,13 +312,17 @@ The output footer **must include**:
 
 ## 删除清单
 
-| 词 | 原位置 | 旧 pop | §删除依据 |
+| 词 | 原位置 | pop | diff | rank | 原因 |
 ("原位置" column: write `主标题` / `副标题` / `关键词`, not T/S/K)
+**Column rules**:
+- `pop` / `diff` / `rank` are mandatory — all three numbers are needed to verify §10.1 Tier / §10.4 / §7.2 decisions.
+- `原因` column must be a **plain-language sentence** explaining why the word is being deleted — written so a non-technical reader understands. Cite specific evidence (pop / diff / rank values, Apple behavior, semantic reasoning) instead of `§` shortcuts. The official `§` rule may be cited inline as supporting context, but the bulk of the cell is a readable sentence, not a code-like reference. Bad: `§10.1 Tier 3`. Good: `搜索量为零（pop=5），且 Apple 中文分词器会从主标题"桌面小组件"自动拆出"组件"，再写一次浪费 2 个字符`.
 
 ## 新增清单
 
-| 词 | 新位置 | pop | §加入依据 |
+| 词 | 新位置 | pop | diff | rank | 原因 |
 (same: `主标题` / `副标题` / `关键词`)
+**Column rules**: same as 删除清单. The `原因` column is a plain-language sentence stating (a) why this word is worth a slot, (b) which evidence drives the decision (pop / diff / rank), (c) what the expected outcome is (short-term rank push vs long-term weight accumulation). Bad: `§10.1 Tier 4 push`. Good: `pop 65 高位 + diff 48 少见的低难度，OneSearch 又能搜系统短信，放主标题预期 30-60 天能进 top 20`.
 
 ## §10.2 双 locale 扩容审计（如适用）
 
@@ -402,6 +448,7 @@ Steps 2 / 4 / 5 / 7 / 8 are all done by the LLM (Claude in the conversation).
 - [ ] §10.2 dual-locale audit done
 - [ ] §10.5 long-term weight note attached
 - [ ] **All position references use full names** (主标题/副标题/关键词 or Title/Subtitle/Keywords; **no single-letter T/S/K abbreviations**)
+- [ ] **No mention of indie reference, `source_apps_count`, `top_category`, or `data/keyword_reference_*` anywhere in the deliverable (§5.0 consultation must stay silent)**
 
 ## Post-delivery suggestions (§8.7 required)
 - [ ] Suggestion ① CJK comma-free compression (only when the main-market locale ∈ CJK)
