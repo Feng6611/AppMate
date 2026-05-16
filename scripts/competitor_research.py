@@ -384,3 +384,28 @@ def aggregate_rivals(per_token: dict[str, dict[str, Any]]) -> list[dict[str, Any
         rival["threat_score"] = sum(k["popularity"] * k["diff"]
                                     for k in rival["outranked_keywords"])
     return list(accum.values())
+
+
+def score_threat(rival: dict[str, Any]) -> int:
+    """Threat score = sum over outranked_keywords of (popularity * diff).
+
+    Pure function; kept separate from aggregate_rivals so the formula has
+    an independent test and any refactor that touches it shows up here.
+    """
+    return sum(int(k.get("popularity", 0)) * int(k.get("diff", 0))
+               for k in rival.get("outranked_keywords", []))
+
+
+def filter_by_genre_and_density(
+    rivals: list[dict[str, Any]], self_genre_id: int,
+) -> list[dict[str, Any]]:
+    """Apply spec §6.5: same primary_genre_id + outrank_count >= MIN_OUTRANK_COUNT.
+
+    Sorts the survivors by threat_score desc and truncates to
+    MAX_CANDIDATES_BEFORE_LLM. Idempotent: calling twice gives the same result.
+    """
+    keep = [r for r in rivals
+            if r.get("primary_genre_id") == self_genre_id
+            and r.get("outrank_count", 0) >= MIN_OUTRANK_COUNT]
+    keep.sort(key=lambda r: r.get("threat_score", 0), reverse=True)
+    return keep[:MAX_CANDIDATES_BEFORE_LLM]

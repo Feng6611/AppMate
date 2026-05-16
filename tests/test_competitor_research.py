@@ -365,3 +365,64 @@ def test_aggregate_rivals_truncates_description_to_200_chars():
     }
     rivals = cr.aggregate_rivals(per_token)
     assert len(rivals[0]["description_short"]) == 200
+
+
+def test_threat_score_formula_pin():
+    """Pin the formula: sum(popularity * diff) over outranked_keywords."""
+    import competitor_research as cr
+    rival = {
+        "outranked_keywords": [
+            {"popularity": 76, "diff": 197},   # unranked self vs rival #3
+            {"popularity": 64, "diff": 10},    # self #15 vs rival #5
+            {"popularity": 53, "diff": 6},     # self #8 vs rival #2
+        ],
+    }
+    expected = 76 * 197 + 64 * 10 + 53 * 6
+    assert cr.score_threat(rival) == expected
+
+
+def _rival(itunes_id, genre, outrank_count, threat=100):
+    return {
+        "itunes_id": str(itunes_id),
+        "name": f"R{itunes_id}",
+        "primary_genre_id": genre,
+        "outrank_count": outrank_count,
+        "threat_score": threat,
+        "outranked_keywords": [{"keyword": "k", "popularity": 1, "diff": 1,
+                                "self_rank": 200, "rival_rank": 1}
+                               for _ in range(outrank_count)],
+    }
+
+
+def test_filter_drops_cross_genre():
+    import competitor_research as cr
+    rivals = [
+        _rival(1, genre=6007, outrank_count=5),
+        _rival(2, genre=6014, outrank_count=5),  # games
+    ]
+    out = cr.filter_by_genre_and_density(rivals, self_genre_id=6007)
+    assert [r["itunes_id"] for r in out] == ["1"]
+
+
+def test_filter_drops_below_density_threshold():
+    import competitor_research as cr
+    rivals = [
+        _rival(1, genre=6007, outrank_count=2),  # below 3
+        _rival(2, genre=6007, outrank_count=3),  # exactly 3
+        _rival(3, genre=6007, outrank_count=10),
+    ]
+    out = cr.filter_by_genre_and_density(rivals, self_genre_id=6007)
+    assert {r["itunes_id"] for r in out} == {"2", "3"}
+
+
+def test_filter_sorts_by_threat_desc_and_truncates_to_max_candidates():
+    import competitor_research as cr
+    rivals = [_rival(i, genre=6007, outrank_count=3, threat=i * 10)
+              for i in range(1, 31)]  # 30 rivals
+    out = cr.filter_by_genre_and_density(rivals, self_genre_id=6007)
+    assert len(out) == cr.MAX_CANDIDATES_BEFORE_LLM  # 25
+    # Sorted desc by threat
+    threats = [r["threat_score"] for r in out]
+    assert threats == sorted(threats, reverse=True)
+    # The top should be itunes_id "30" (highest threat)
+    assert out[0]["itunes_id"] == "30"
