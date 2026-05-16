@@ -524,3 +524,52 @@ def test_cmd_rank_writes_phase_b(monkeypatch, tmp_path):
     assert len(data["candidates"]) == 1
     assert data["candidates"][0]["itunes_id"] == "10"
     assert data["candidates"][0]["outrank_count"] == 3
+
+
+def test_main_dispatches_analyze(monkeypatch):
+    import competitor_research as cr
+    captured = {}
+    def fake_analyze(q):
+        captured["analyze"] = q
+        return 0
+    monkeypatch.setattr(cr, "cmd_analyze", fake_analyze)
+    rc = cr.main(["analyze", "Demo"])
+    assert rc == 0
+    assert captured["analyze"] == "Demo"
+
+
+def test_main_dispatches_rank_with_tokens(monkeypatch):
+    import competitor_research as cr
+    captured = {}
+    def fake_rank(q, tokens):
+        captured["q"] = q
+        captured["tokens"] = tokens
+        return 0
+    monkeypatch.setattr(cr, "cmd_rank", fake_rank)
+    rc = cr.main(["rank", "Demo", "--tokens", "便签,桌面便签,memo"])
+    assert rc == 0
+    assert captured["q"] == "Demo"
+    assert captured["tokens"] == ["便签", "桌面便签", "memo"]
+
+
+def test_main_help_when_no_args(capsys):
+    import competitor_research as cr
+    rc = cr.main([])
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "Usage" in captured.out or "Usage" in captured.err
+
+
+def test_show_a_prints_summary(monkeypatch, tmp_path, capsys):
+    import competitor_research as cr
+    phase_a_path = tmp_path / "phase_a_competitors_demo_us.json"
+    phase_a_path.write_text(json.dumps({
+        "app": "Demo", "market": "US", "primary_genre_id": 6007,
+        "raw": {"title": "Demo App", "subtitle": "sub", "keywords": "a,b,c"},
+    }))
+    monkeypatch.setattr(cr, "OUTPUT_DIR", tmp_path)
+    rc = cr.cmd_show_a("Demo")
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Demo" in out
+    assert "6007" in out

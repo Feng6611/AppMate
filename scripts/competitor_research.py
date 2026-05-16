@@ -502,3 +502,85 @@ def _load_phase_a_for_query(query: str) -> dict[str, Any] | None:
         if q in str(data.get("app", "")).lower():
             return data
     return None
+
+
+def cmd_show_a(query: str) -> int:
+    data = _load_phase_a_for_query(query)
+    if data is None:
+        print(f"ERROR: no phase_a file for '{query}'", file=sys.stderr)
+        return 2
+    raw = data.get("raw", {})
+    print(f"App: {data.get('app')} ({data.get('app_id')})")
+    print(f"Market: {data.get('market')} · genre_id={data.get('primary_genre_id')}")
+    print(f"Title:    {raw.get('title')}")
+    print(f"Subtitle: {raw.get('subtitle')}")
+    print(f"Keywords: {raw.get('keywords')}")
+    return 0
+
+
+def cmd_show_b(query: str) -> int:
+    # Find latest phase_b file matching query
+    candidates = sorted(OUTPUT_DIR.glob("phase_b_competitors_*.json"),
+                        key=lambda p: p.stat().st_mtime, reverse=True)
+    q = query.lower()
+    data = None
+    for path in candidates:
+        try:
+            d = json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        if q in str(d.get("app", "")).lower():
+            data = d
+            break
+    if data is None:
+        print(f"ERROR: no phase_b file for '{query}'", file=sys.stderr)
+        return 2
+    cands = data.get("candidates", [])
+    print(f"App: {data.get('app')} · {len(cands)} candidates after filters")
+    for i, c in enumerate(cands[:10], 1):
+        print(f"  {i:>2}. [{c['threat_score']:>8}] {c['name']} "
+              f"(outrank={c['outrank_count']}, avg_diff={c['avg_rank_diff']:.1f})")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    if not argv:
+        print("Usage:")
+        print("  competitor_research.py analyze <app>")
+        print("  competitor_research.py rank <app> --tokens 'k1,k2,k3'")
+        print("  competitor_research.py show-a <app>")
+        print("  competitor_research.py show-b <app>")
+        return 2
+
+    parser = argparse.ArgumentParser(prog="competitor_research")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_analyze = sub.add_parser("analyze")
+    p_analyze.add_argument("app")
+
+    p_rank = sub.add_parser("rank")
+    p_rank.add_argument("app")
+    p_rank.add_argument("--tokens", required=True,
+                        help="comma-separated token list from Claude")
+
+    p_show_a = sub.add_parser("show-a")
+    p_show_a.add_argument("app")
+
+    p_show_b = sub.add_parser("show-b")
+    p_show_b.add_argument("app")
+
+    args = parser.parse_args(argv)
+    if args.cmd == "analyze":
+        return cmd_analyze(args.app)
+    if args.cmd == "rank":
+        tokens = [t.strip() for t in args.tokens.split(",") if t.strip()]
+        return cmd_rank(args.app, tokens)
+    if args.cmd == "show-a":
+        return cmd_show_a(args.app)
+    if args.cmd == "show-b":
+        return cmd_show_b(args.app)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
