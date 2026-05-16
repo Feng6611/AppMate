@@ -26,14 +26,113 @@ from typing import Any
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+import re  # noqa: E402
+
 import appmate_config  # noqa: E402
 from aso_optimize_v2 import find_app, slugify  # noqa: E402
 from feature_ideate import (  # noqa: E402
-    bucket_reviews,
-    pick_competitor_seed,
     pick_primary_market,
     _is_install_ptid,
 )
+
+# --- Review bucketing + competitor-seed picker --------------------------
+#
+# These two helpers used to live in feature_ideate v2 and were imported here.
+# feature_ideate v3 removed both (its review pre-aggregation is now raw, and
+# its competitors come from /appmate-competitors instead of AppMate RAG).
+# Growth still wants the bucket counts (for stage signals) and a RAG seed,
+# so the helpers are inlined here as growth-private utilities.
+
+_REVIEW_AGE_DAYS = 90
+_REVIEW_BUCKET_CAP = 50
+_NEG_RATING_MAX = 3
+_POS_RATING_MIN = 4
+_MIN_BODY_LEN = 10
+_WISH_TRIGGERS = ["希望", "能否", "建议", "求", "请加", "不能", "为什么没有",
+                  "wish", "would love", "please add", "hope", "could you"]
+
+
+def _parse_review_date(created: str) -> dt.date | None:
+    if not created or not isinstance(created, str):
+        return None
+    head = created.split("T", 1)[0]
+    try:
+        return dt.date.fromisoformat(head)
+    except ValueError:
+        return None
+
+
+def _slim_review(r: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "rating": r.get("rating"),
+        "title": r.get("title") or "",
+        "body": r.get("body") or "",
+        "locale": r.get("territory") or "",
+        "created_at": r.get("createdDate") or "",
+    }
+
+
+def _has_wish_trigger(text: str) -> bool:
+    if not text:
+        return False
+    low = text.lower()
+    return any(t.lower() in low for t in _WISH_TRIGGERS)
+
+
+def bucket_reviews(
+    reviews: list[dict[str, Any]],
+    today: dt.date | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    """Split last-90-days reviews into 'negative' and 'wishlist' buckets,
+    each capped at 50 newest-first.
+
+    - negative: rating <= 3 AND len(body) >= 10
+    - wishlist: rating >= 4 AND body contains a wish trigger word
+    """
+    today = today or dt.date.today()
+    cutoff = today - dt.timedelta(days=_REVIEW_AGE_DAYS)
+
+    negative: list[tuple[dt.date, dict[str, Any]]] = []
+    wishlist: list[tuple[dt.date, dict[str, Any]]] = []
+    for r in reviews or []:
+        body = r.get("body") or ""
+        rating = r.get("rating")
+        d = _parse_review_date(r.get("createdDate", ""))
+        if d is None or d < cutoff:
+            continue
+        if isinstance(rating, int) and rating <= _NEG_RATING_MAX and len(body) >= _MIN_BODY_LEN:
+            negative.append((d, _slim_review(r)))
+        elif isinstance(rating, int) and rating >= _POS_RATING_MIN and _has_wish_trigger(body):
+            wishlist.append((d, _slim_review(r)))
+
+    negative.sort(key=lambda x: x[0], reverse=True)
+    wishlist.sort(key=lambda x: x[0], reverse=True)
+    return {
+        "negative": [r for _, r in negative[:_REVIEW_BUCKET_CAP]],
+        "wishlist": [r for _, r in wishlist[:_REVIEW_BUCKET_CAP]],
+    }
+
+
+def pick_competitor_seed(app: dict[str, Any]) -> str:
+    """Longest ASCII alpha word from any locale name → core.name → 'app'."""
+    candidates: list[str] = []
+    locs = (app.get("appInfo") or {}).get("localizations") or []
+    for loc in locs:
+        n = loc.get("name") or ""
+        if n:
+            candidates.append(n)
+    core_name = (app.get("core") or {}).get("name") or ""
+    if core_name:
+        candidates.append(core_name)
+
+    best_word = ""
+    for name in candidates:
+        for m in re.finditer(r"[A-Za-z]{3,}", name):
+            w = m.group(0)
+            if len(w) > len(best_word):
+                best_word = w
+    return best_word or "app"
+
 
 # --- Constants (workflow §1c / §1d / §1e / §1f) ------------------------
 COMPETITOR_TOP_K = 8

@@ -76,11 +76,13 @@ From `data/apps_full.json` + `data/aso_rank_snapshots.json`: `current_locales`, 
 
 ## 1e. Review-signal summary
 
-`rating_avg`, `negative_count_90d` (last 90 days, `rating ≤ 3` and `len(body) ≥ 10`), `wishlist_count_90d` (last 90 days, `rating ≥ 4` and contains a trigger word — same rule as `feature_ideate.py` 1b), `top_negative_themes` (simple clustering, or dump the first 10 bodies).
+`rating_avg`, `negative_count_90d` (last 90 days, `rating ≤ 3` and `len(body) ≥ 10`), `wishlist_count_90d` (last 90 days, `rating ≥ 4` and contains a trigger word from the static `_WISH_TRIGGERS` list in `growth_strategy.py`), `top_negative_themes` (simple clustering, or dump the first 10 bodies).
+
+> The bucketing helpers (`bucket_reviews`, `_has_wish_trigger`, etc.) live inline in `growth_strategy.py` — they used to be imported from `feature_ideate.py`, but feature_ideate v3 dropped pre-bucketing and the helpers were moved here.
 
 ## 1f. Competitor fetch (AppMate RAG)
 
-- **Query (seed)**: reuses the `feature-ideation` 1c seed-extraction logic.
+- **Query (seed)**: longest ASCII alpha word from any locale name, then `core.name`, fallback `"app"`. The picker (`pick_competitor_seed`) lives inline in `growth_strategy.py` — same logic that used to live in `feature_ideate.py` 1c before v3.
 - **Call**: `appmate_rag_client.search(query=seed, region=main_market, top_k=8, min_review_count=50, sort_by="S")`
 - **Extract**: per competitor `{name, rating, review_count, description, appmate_reason}`
 - ⚠️ `appmate_*` internal scores are for LLM reasoning reference only — not shown to the end user.

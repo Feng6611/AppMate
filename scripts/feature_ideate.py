@@ -1,8 +1,12 @@
 """Step 1 aggregator for the feature ideation workflow.
 
 See skills/feature-ideation/SKILL.md for the methodology.
-Pipeline: app fuzzy match -> primary market -> review bucketing ->
-competitor fetch -> ASO blindspots -> phase_a JSON.
+Pipeline: app fuzzy match -> primary market -> raw reviews collector ->
+load competitors_<slug>.json (produced by /appmate-competitors) -> phase_a JSON.
+
+v3 (current): no review bucketing, no RAG. The downstream LLM classifies
+each review on its own (complaint / suggestion / praise) and competitors
+come from the /appmate-competitors output, not AppMate RAG.
 """
 from __future__ import annotations
 
@@ -10,7 +14,6 @@ import argparse
 import datetime as dt
 import json
 import pathlib
-import re
 import sys
 from typing import Any
 
@@ -23,14 +26,7 @@ from aso_optimize_v2 import find_app, slugify  # noqa: E402
 
 # --- Constants ----------------------------------------------------------
 REVIEW_AGE_DAYS = 90
-REVIEW_BUCKET_CAP = 50
-NEG_RATING_MAX = 3
-POS_RATING_MIN = 4
-WISH_TRIGGERS = ["希望", "能否", "建议", "求", "请加", "不能", "为什么没有",
-                 "wish", "would love", "please add", "hope", "could you"]
-MIN_BODY_LEN = 10
-COMPETITOR_TOP_K = 10
-COMPETITOR_MIN_REVIEWS = 50
+RAW_REVIEW_CAP = 150
 
 # Locale -> default country (when locale has no region, e.g. 'ja', 'ko')
 LOCALE_DEFAULT_COUNTRY = {
@@ -38,6 +34,12 @@ LOCALE_DEFAULT_COUNTRY = {
     "en": "US", "fr": "FR", "de": "DE", "it": "IT", "es": "ES",
     "pt": "BR", "ru": "RU", "ar": "SA",
 }
+
+# Fields we copy from each entry of competitors_<slug>.json :: filtered[].
+COMPETITOR_FIELDS = (
+    "name", "description_short", "outranked_keywords",
+    "relevance_reason", "threat_score", "rating", "review_count",
+)
 
 
 def _is_install_ptid(ptid: str) -> bool:
@@ -99,7 +101,6 @@ def pick_primary_market(
         return max(tally.items(), key=lambda kv: kv[1])[0]
 
     locale = (app.get("core") or {}).get("primaryLocale") or ""
-    # Try full locale, then language-only key
     if "-" in locale:
         region = locale.split("-")[1]
         if region.isalpha() and len(region) == 2:
@@ -123,16 +124,6 @@ def _parse_review_date(created: str) -> dt.date | None:
         return None
 
 
-def _has_wish_trigger(text: str) -> bool:
-    if not text:
-        return False
-    low = text.lower()
-    for trig in WISH_TRIGGERS:
-        if trig.lower() in low:
-            return True
-    return False
-
-
 def _slim_review(r: dict[str, Any]) -> dict[str, Any]:
     return {
         "rating": r.get("rating"),
@@ -143,102 +134,55 @@ def _slim_review(r: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def bucket_reviews(
+def collect_raw_reviews(
     reviews: list[dict[str, Any]],
     today: dt.date | None = None,
-) -> dict[str, list[dict[str, Any]]]:
-    """Split reviews into 'negative' and 'wishlist' buckets per spec §1b.
+    cap: int = RAW_REVIEW_CAP,
+) -> list[dict[str, Any]]:
+    """Return last-90-days reviews, newest first, capped at `cap`.
 
-    - negative: rating <= 3 AND len(body) >= 10
-    - wishlist: rating >= 4 AND body contains a trigger word
-    Both: createdDate within last 90 days. Each bucket capped at 50 entries,
-    newest first.
+    No rating filter, no trigger-word filter — the downstream LLM reads each
+    body and classifies it (complaint / suggestion / praise) on its own.
     """
     today = today or dt.date.today()
     cutoff = today - dt.timedelta(days=REVIEW_AGE_DAYS)
 
-    negative: list[tuple[dt.date, dict[str, Any]]] = []
-    wishlist: list[tuple[dt.date, dict[str, Any]]] = []
+    dated: list[tuple[dt.date, dict[str, Any]]] = []
     for r in reviews or []:
-        body = r.get("body") or ""
-        rating = r.get("rating")
         d = _parse_review_date(r.get("createdDate", ""))
         if d is None or d < cutoff:
             continue
-        if isinstance(rating, int) and rating <= NEG_RATING_MAX and len(body) >= MIN_BODY_LEN:
-            negative.append((d, _slim_review(r)))
-        elif isinstance(rating, int) and rating >= POS_RATING_MIN and _has_wish_trigger(body):
-            wishlist.append((d, _slim_review(r)))
+        dated.append((d, _slim_review(r)))
 
-    negative.sort(key=lambda x: x[0], reverse=True)
-    wishlist.sort(key=lambda x: x[0], reverse=True)
+    dated.sort(key=lambda x: x[0], reverse=True)
+    return [r for _, r in dated[:cap]]
+
+
+def load_competitors(
+    app_name: str,
+    market: str,
+    data_dir: pathlib.Path | None = None,
+) -> dict[str, Any] | None:
+    """Load data/competitors_<slug>.json produced by /appmate-competitors.
+
+    Returns a dict with `source_path`, `generated_at`, `entries` (slim list of
+    competitors derived from the `filtered` array) — OR None if the file is
+    missing. The caller treats `None` as a hard error and tells the user to
+    run /appmate-competitors first.
+    """
+    d = data_dir if data_dir is not None else OUTPUT_DIR
+    slug = slugify(app_name, market)
+    path = d / f"competitors_{slug}.json"
+    if not path.exists():
+        return None
+    payload = json.loads(path.read_text())
+    filtered = payload.get("filtered") or []
+    entries = [{k: c.get(k) for k in COMPETITOR_FIELDS} for c in filtered]
     return {
-        "negative": [r for _, r in negative[:REVIEW_BUCKET_CAP]],
-        "wishlist": [r for _, r in wishlist[:REVIEW_BUCKET_CAP]],
+        "source_path": str(path),
+        "generated_at": payload.get("generated_at") or "",
+        "entries": entries,
     }
-
-
-def pick_competitor_seed(app: dict[str, Any]) -> str:
-    """Choose the keyword to feed AppMate RAG as a competitor-search seed.
-
-    Priority:
-      1. Longest ASCII alpha word from a locale name (prefer country locale).
-      2. Longest ASCII alpha word from core.name.
-      3. Literal 'app'.
-
-    v2: removed the "ASO best ranked keyword" path — see workflow doc §1c
-    for rationale (ASO data sources removed entirely from this workflow).
-    """
-    candidates: list[str] = []
-    locs = (app.get("appInfo") or {}).get("localizations") or []
-    for loc in locs:
-        n = loc.get("name") or ""
-        if n:
-            candidates.append(n)
-    core_name = (app.get("core") or {}).get("name") or ""
-    if core_name:
-        candidates.append(core_name)
-
-    best_word = ""
-    for name in candidates:
-        for m in re.finditer(r"[A-Za-z]{3,}", name):
-            w = m.group(0)
-            if len(w) > len(best_word):
-                best_word = w
-    return best_word or "app"
-
-
-# Wrap appmate_rag_client.search so tests can monkeypatch _rag_search.
-def _rag_search(**kwargs: Any) -> list[dict[str, Any]]:
-    from appmate_rag_client import search as _search  # local import for testability
-    return _search(**kwargs)
-
-
-COMPETITOR_FIELDS = ("name", "rating", "review_count", "description", "appmate_reason")
-
-
-def fetch_competitors(seed: str, country: str) -> list[dict[str, Any]]:
-    """Pull top-N similar apps for a seed keyword via AppMate RAG.
-
-    Returns a list of dicts with only the COMPETITOR_FIELDS keys.
-    On any RAG exception returns an empty list (the caller treats no-competitors
-    as a soft failure: phase_a still emits, downstream LLM falls back to
-    reviews + ASO blindspots).
-    """
-    try:
-        rows = _rag_search(
-            query=seed,
-            region=country.lower(),
-            top_k=COMPETITOR_TOP_K,
-            min_review_count=COMPETITOR_MIN_REVIEWS,
-            sort_by="S",
-        )
-    except Exception:
-        return []
-    out = []
-    for r in rows or []:
-        out.append({k: r.get(k) for k in COMPETITOR_FIELDS})
-    return out
 
 
 def _downloads_30d(app_id: str, sales_cache: dict[str, list[dict[str, str]]],
@@ -273,34 +217,37 @@ def build_phase_a(
     app: dict[str, Any],
     sales_cache: dict[str, list[dict[str, str]]],
     today: dt.date | None = None,
-) -> dict[str, Any]:
-    """Run the Step 1 pipeline end-to-end and return the phase_a dict.
+    data_dir: pathlib.Path | None = None,
+) -> dict[str, Any] | None:
+    """Run the Step 1 pipeline end-to-end.
 
-    v2: removed snapshots/pop_cache parameters — ASO blindspot data source
-    deleted (see workflow doc §1c v1 → v2 note).
+    Returns the phase_a dict, or None if data/competitors_<slug>.json is
+    missing (the caller prints a helpful message and exits 2).
     """
     today = today or dt.date.today()
     bid = (app.get("core") or {}).get("bundleId") or ""
     app_id = str(app.get("id") or "")
+    app_name = (app.get("core") or {}).get("name") or ""
     market = pick_primary_market(app, sales_cache, today=today)
 
-    reviews_list = ((app.get("reviews") or {}).get("reviews")) or []
-    buckets = bucket_reviews(reviews_list, today=today)
+    competitors_block = load_competitors(app_name, market, data_dir=data_dir)
+    if competitors_block is None:
+        return None
 
-    seed = pick_competitor_seed(app)
-    competitors = fetch_competitors(seed, country=market)
+    reviews_list = ((app.get("reviews") or {}).get("reviews")) or []
+    raw_reviews = collect_raw_reviews(reviews_list, today=today)
 
     return {
-        "app": (app.get("core") or {}).get("name") or "",
+        "app": app_name,
         "app_id": app_id,
         "bundle_id": bid,
         "market": market,
         "downloads_30d_in_market": _downloads_30d(app_id, sales_cache, market, today),
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-        "competitor_seed": seed,
-        "reviews_negative": buckets["negative"],
-        "reviews_wishlist": buckets["wishlist"],
-        "competitors": competitors,
+        "reviews": raw_reviews,
+        "competitors_source": competitors_block["source_path"],
+        "competitors_generated_at": competitors_block["generated_at"],
+        "competitors": competitors_block["entries"],
     }
 
 
@@ -318,7 +265,7 @@ def _load_json(path: pathlib.Path) -> Any:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Aggregate reviews + competitors for an app."
+        description="Aggregate raw reviews + competitors for an app."
     )
     parser.add_argument("app", help="App Store ID / bundle ID / SKU / fuzzy name")
     args = parser.parse_args(argv)
@@ -335,6 +282,17 @@ def main(argv: list[str] | None = None) -> int:
     sales_cache = _load_json(SALES_CACHE_PATH) or {}
 
     phase_a = build_phase_a(app, sales_cache)
+    if phase_a is None:
+        app_name = (app.get("core") or {}).get("name") or ""
+        market = pick_primary_market(app, sales_cache)
+        expected = OUTPUT_DIR / f"competitors_{slugify(app_name, market)}.json"
+        print(
+            f"[feature-ideate] ERROR: competitors JSON not found at {expected}\n"
+            f"Run /appmate-competitors \"{args.app}\" first, then re-run this command.",
+            file=sys.stderr,
+        )
+        return 2
+
     slug = slugify(phase_a["app"], phase_a["market"])
     out = OUTPUT_DIR / f"phase_a_feature_{slug}.json"
     out.write_text(json.dumps(phase_a, ensure_ascii=False, indent=2))
@@ -342,8 +300,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"[feature-ideate] {phase_a['app']} · market={phase_a['market']} · "
         f"30d={phase_a['downloads_30d_in_market']} · "
-        f"reviews(-/+wish)={len(phase_a['reviews_negative'])}/"
-        f"{len(phase_a['reviews_wishlist'])} · "
+        f"reviews={len(phase_a['reviews'])} · "
         f"competitors={len(phase_a['competitors'])}"
     )
     print(f"[saved] {out}")
