@@ -1,6 +1,6 @@
 # AppMate
 
-A **Claude Code plugin** — an App Store Connect operations toolkit for indie developers. Python data-layer scripts plus LLM-driven skills that cover **sales reporting, ASO optimization, ASO daily monitoring, feature ideation, and growth strategy**.
+A **Claude Code plugin** — an App Store Connect operations toolkit for indie developers. Python data-layer scripts plus LLM-driven skills that cover **sales reporting, ASO optimization, ASO daily monitoring, feature ideation, competitor research, and growth strategy**.
 
 Design pattern: scripts do the deterministic data work (API calls, caching, rank lookups); the LLM does everything that needs semantic judgment (Chinese tokenization, candidate generation, strategy reasoning, report rendering). Each workflow involves you only at the start and the end.
 
@@ -15,7 +15,7 @@ Inside Claude Code, run:
 /plugin install appmate@appmate-marketplace
 ```
 
-That's the whole install. The plugin pulls itself from GitHub, registers the six `/appmate-*` slash commands, and loads the six skills.
+That's the whole install. The plugin pulls itself from GitHub, registers the seven `/appmate-*` slash commands, and loads the seven skills.
 
 Then install the Python data-layer dependencies (App Store Connect API client uses PyJWT + cryptography):
 
@@ -91,7 +91,7 @@ All four green = every workflow can run.
 
 ---
 
-## The 6 workflows
+## The 7 workflows
 
 | Command | What it does | Typical runtime |
 |---|---|---|
@@ -100,6 +100,7 @@ All four green = every workflow can run.
 | `/appmate-aso-optimize <app>` | Deep ASO optimization for one app. Produces three paste-ready strings (title 30 char / subtitle 30 char / keywords 100 char) per a ten-section methodology with §-numbered rules. Outputs an OLD vs NEW table and an addition/deletion checklist with `pop / diff / rank` columns. | ~2 min |
 | `/appmate-aso-daily` | Keyword-ranking daily report for your top-3 apps by 30-day downloads. LLM-tokenizes each app's title / subtitle / keywords, checks rank via iTunes Search Top-200, filters to rank ≤ 20, diffs against yesterday's snapshot. | ~1 min |
 | `/appmate-feature-ideas <app>` | Prioritized feature recommendations for one app, built from review negatives + wishlist signals + top-10 competitor evidence. Two sentences per idea (what + why), no jargon, no scores shown. | ~1 min |
+| `/appmate-competitors <app>` | Find the top 5-10 rivals outranking one app on its own core keywords. Pure iTunes Search SERP overlap, hard-filtered by category + outrank density, LLM relevance pass on name+description. Outputs a Chinese markdown report + a stable JSON (`data/competitors_<slug>.json`) for future downstream skills to consume. | ~1 min |
 | `/appmate-growth <app>` | Stage-diagnosed growth strategy (cold start / early growth / plateau / decline). 3-5 strategies, each with 4 executable steps and a measurement step. | ~1 min |
 
 App arguments accept **App Store ID / bundle ID / SKU / fuzzy name match**.
@@ -113,6 +114,7 @@ App arguments accept **App Store ID / bundle ID / SKU / fuzzy name match**.
 /appmate-aso-optimize 1482080766
 /appmate-aso-daily
 /appmate-feature-ideas Sticky Note Pro
+/appmate-competitors Sticky Note Pro
 /appmate-growth 1482080766
 ```
 
@@ -143,14 +145,14 @@ See `docs/ASC_API_REFERENCE.md` and `docs/APPMATE_RAG_API.md` for the full endpo
 
 ```
 .claude-plugin/   plugin.json + marketplace.json — Claude Code plugin manifests
-commands/         6 /appmate-* slash commands
-skills/           6 skills (English process docs; aso-optimize ships
+commands/         7 /appmate-* slash commands
+skills/           7 skills (English process docs; aso-optimize ships
                   a 671-line methodology reference in references/)
 scripts/          15 Python scripts (data layer + entry points) + appmate_config.py
 config/           gitignored — credentials + .p8 keys (ships only the example + README)
 data/             gitignored except for the two keyword_reference tables
 docs/             ASC API reference + AppMate RAG reference + design specs / plans
-tests/            pytest suite (86 cases, runs in <0.2s)
+tests/            pytest suite (157 cases, runs in <0.5s)
 ```
 
 ---
