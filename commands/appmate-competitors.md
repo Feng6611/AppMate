@@ -14,6 +14,6 @@ Run the `competitor-research` skill for the app specified as an argument.
 4. Run `python3 scripts/competitor_research.py rank "$ARGUMENTS" --tokens "<comma-separated tokens>"` to write `data/phase_b_competitors_<slug>.json`.
 5. Read phase_b, perform the batched LLM relevance filter per Stage 3 rules.
 6. Write `data/competitors_<slug>.json` and render `data/competitors_<slug>.md` per the markdown template.
-7. **Paste the full markdown back into the conversation.** Do not say "saved" alone.
+7. **Paste the full markdown back into the conversation.** Do not say "saved" alone. **Render the report in the same language the user has been using in this conversation** (English by default; switch to Chinese / Japanese / etc. if the user has been writing in that language).
 
 Refer to `skills/competitor-research/SKILL.md` for the full rules, prompts, and checklist.

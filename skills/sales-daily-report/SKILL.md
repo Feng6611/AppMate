@@ -40,7 +40,7 @@ Pull ~65 days of daily reports from App Store Connect → aggregate across 5 tim
 | Yesterday | DATA_TODAY (most recent day with data) | the day before |
 | Last 7 days | DATA_TODAY back 7 days | the prior 7 days |
 | Last 30 days | DATA_TODAY back 30 days | the prior 30 days |
-| This week | this Monday → DATA_TODAY | (shows "暂无" if this week's data is not in yet) |
+| This week | this Monday → DATA_TODAY | (shows "Data not yet published by Apple" if this week's data is not in yet) |
 | This month | the 1st → DATA_TODAY | **the entire previous month** (not the same day range) |
 
 ## Workflow (the script does this automatically in one pass)
@@ -53,28 +53,28 @@ Pull ~65 days of daily reports from App Store Connect → aggregate across 5 tim
 
 ## Report template (v1 — follow exactly)
 
-The script renders the report in **Chinese** by design. Do not translate the rendered output.
+**Rendered in the same language the user has been using in this conversation.** Default to English; if the user has been writing in Chinese / Japanese / Spanish / etc., translate the template headers, labels and prose accordingly. App / SKU / country names stay in their original form. The script itself emits English strings — translate them on the fly when rendering back into the conversation reply if the user's language is not English.
 
 ### Top one-liner (required)
 
 ```
-**昨天({MM-DD}) 收入 ${X}** · 本周收入 ${X} · 本月收入 ${X}
+**Yesterday ({MM-DD}) revenue ${X}** · this week ${X} · this month ${X}
 ```
 
-If Apple has not published a range's data yet, that slot shows `暂无`.
+If Apple has not published a range's data yet, that slot shows `N/A` and the per-dimension block prints `> ⏳ Data not yet published by Apple`.
 
 ### Totals block (5 dimensions, fixed order)
 
 ```markdown
-## 🧮 总和
+## 🧮 Totals
 
-### {dimension}({range-compact})
+### {dimension} ({range-compact})
 
-- 💰 营收: **{current revenue}**  ·  {↑↓ N%}
+- 💰 Revenue: **{current revenue}**  ·  {↑↓ N%}
     1. **{revenue}** ({share}%)  ·  {↑↓ N%}  ·  {app name}
     2. **{revenue}** ({share}%)  ·  {↑↓ N%}  ·  {app name}
     3. **{revenue}** ({share}%)  ·  {↑↓ N%}  ·  {app name}
-- 📥 下载: **{current downloads}**  ·  {↑↓ N%}
+- 📥 Downloads: **{current downloads}**  ·  {↑↓ N%}
     1. **{downloads}** ({share}%)  ·  {↑↓ N%}  ·  {app name}
     2. **{downloads}** ({share}%)  ·  {↑↓ N%}  ·  {app name}
     3. **{downloads}** ({share}%)  ·  {↑↓ N%}  ·  {app name}
@@ -83,13 +83,13 @@ If Apple has not published a range's data yet, that slot shows `暂无`.
 ### Footer note (required)
 
 ```
-> ⓘ 营收为多币种按近似汇率折算为 USD（非财务对账数据）。Apple 日报延迟 1–2 天。
-> 本月对比的是上月**整月**；前 7/30 天对比的是再往前 7/30 天。
+> ⓘ Revenue is multi-currency, converted to USD via approximate FX (not finance-grade). Apple daily reports lag 1–2 days.
+> This month compares against the **entire previous month**; last 7/30 days compare against the 7/30 days before that.
 ```
 
 ## 10 inviolable rules
 
-1. **No mixed Chinese/English headings** — all-Chinese headings in the rendered report.
+1. **Headings stay in a single language** — match the user's conversation language; don't mix languages within a heading.
 2. **No bar charts** — change is shown only as `↑↓ N%`.
 3. **No "current X vs previous Y"** — dates go only in the H3 heading parentheses.
 4. **No "previous N"** — show only the current value plus the percentage change.

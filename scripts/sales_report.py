@@ -1,12 +1,12 @@
 """Sales & downloads dashboard for all live apps.
 
 Time dimensions (in display order):
-  1. 综合 / Consolidated   — aggregate totals across all apps for every dimension below
-  2. 昨天     yesterday     vs day-before
-  3. 前7天    last 7 days   vs prior 7 days
-  4. 前30天   last 30 days  vs prior 30 days
-  5. 本周     this week (Mon→today)         vs same days of last week
-  6. 本月     this month (1st → today)      vs same range of last month
+  1. Consolidated — aggregate totals across all apps for every dimension below
+  2. Yesterday    vs day-before
+  3. Last 7 days  vs prior 7 days
+  4. Last 30 days vs prior 30 days
+  5. This week (Mon→today)    vs same days of last week
+  6. This month (1st → today) vs same range of last month
 
 Then per-app rows, sorted by 30-day download count desc.
 
@@ -273,27 +273,27 @@ def build_dimensions(by_day: dict[str, dict[str, dict[str, float]]]) -> list[dic
 
     dims = [
         {
-            "label": "昨天 / Yesterday",
+            "label": "Yesterday",
             "current": (yesterday, yesterday),
             "previous": (day_before, day_before),
         },
         {
-            "label": "前7天 / Last 7 days",
+            "label": "Last 7 days",
             "current": (last7_start, yesterday),
             "previous": (last7_prev_start, last7_prev_end),
         },
         {
-            "label": "前30天 / Last 30 days",
+            "label": "Last 30 days",
             "current": (last30_start, yesterday),
             "previous": (last30_prev_start, last30_prev_end),
         },
         {
-            "label": "本周 / This week",
+            "label": "This week",
             "current": (this_mon, this_week_end),
             "previous": (last_week_mon, last_week_end),
         },
         {
-            "label": "本月 / This month",
+            "label": "This month",
             "current": (this_month_start, this_month_end),
             "previous": (last_month_start, last_month_end),
         },
@@ -358,7 +358,7 @@ def pct_change_md(current: float, previous: float) -> str:
 def _range_label(d: dict[str, Any]) -> str:
     start, end = d["current"]
     if start > end:
-        return "(数据未到)"
+        return "(no data yet)"
     if start == end:
         return f"{start:%Y-%m-%d}"
     return f"{start:%Y-%m-%d} → {end:%Y-%m-%d}"
@@ -401,15 +401,6 @@ def name_with_icon(name: str, icons: dict[str, str], size: int = 20) -> str:
     return f'<img src="{url}" width="{size}" height="{size}" align="absmiddle"/> {name}'
 
 
-DIM_LABELS_CN = {
-    "昨天 / Yesterday": "昨天",
-    "前7天 / Last 7 days": "前 7 天",
-    "前30天 / Last 30 days": "前 30 天",
-    "本周 / This week": "本周",
-    "本月 / This month": "本月",
-}
-
-
 def _short_range(d: tuple[dt.date, dt.date]) -> str:
     start, end = d
     if start > end:
@@ -420,10 +411,10 @@ def _short_range(d: tuple[dt.date, dt.date]) -> str:
 
 
 def _short_range_compact(d: tuple[dt.date, dt.date]) -> str:
-    """Like 05-10 or 05-04~05-10. Empty range → 暂无."""
+    """Like 05-10 or 05-04~05-10. Empty range → N/A."""
     start, end = d
     if start > end:
-        return "暂无"
+        return "N/A"
     if start == end:
         return f"{start:%m-%d}"
     return f"{start:%m-%d}~{end:%m-%d}"
@@ -456,31 +447,31 @@ def render(dims: list[dict[str, Any]], live_apps: set[str]) -> None:
     lines: list[str] = []
 
     # One-line top summary: yesterday + this-week + this-month revenue
-    def _rev(dim_label_prefix: str) -> tuple[str, float]:
-        d = next((x for x in dims if x["label"].startswith(dim_label_prefix)), None)
+    def _rev(dim_label: str) -> tuple[str, float]:
+        d = next((x for x in dims if x["label"] == dim_label), None)
         if d is None:
             return "—", 0.0
         start, end = d["current"]
         rev = sum(m["revenue_usd"] for n, m in d["current_data"].items() if n in live_apps)
         if start > end:
-            return "暂无", 0.0
+            return "N/A", 0.0
         return fmt_usd(rev), rev
 
-    yest_rev_str, _ = _rev("昨天")
-    week_rev_str, _ = _rev("本周")
-    month_rev_str, _ = _rev("本月")
+    yest_rev_str, _ = _rev("Yesterday")
+    week_rev_str, _ = _rev("This week")
+    month_rev_str, _ = _rev("This month")
 
-    lines.append("# 📊 App Store 销售与下载日报")
+    lines.append("# 📊 App Store Sales & Downloads Daily Report")
     lines.append("")
     lines.append(
-        f"**昨天({DATA_TODAY:%m-%d}) 收入 {yest_rev_str}** · "
-        f"本周收入 {week_rev_str} · "
-        f"本月收入 {month_rev_str}"
+        f"**Yesterday ({DATA_TODAY:%m-%d}) revenue {yest_rev_str}** · "
+        f"this week {week_rev_str} · "
+        f"this month {month_rev_str}"
     )
     lines.append("")
     lines.append("---")
     lines.append("")
-    lines.append("## 🧮 总和")
+    lines.append("## 🧮 Totals")
     lines.append("")
 
     for d in dims:
@@ -490,19 +481,18 @@ def render(dims: list[dict[str, Any]], live_apps: set[str]) -> None:
         prv_dl = sum(m["downloads"] for n, m in prev.items() if n in live_apps)
         cur_rev = sum(m["revenue_usd"] for n, m in cur.items() if n in live_apps)
         prv_rev = sum(m["revenue_usd"] for n, m in prev.items() if n in live_apps)
-        cn_label = DIM_LABELS_CN.get(d["label"], d["label"])
         rng_short = _short_range_compact(d["current"])
 
-        lines.append(f"### {cn_label}({rng_short})")
+        lines.append(f"### {d['label']} ({rng_short})")
         lines.append("")
         start, end = d["current"]
         if start > end:
-            lines.append("> ⏳ 数据尚未由 Apple 生成")
+            lines.append("> ⏳ Data not yet published by Apple")
             lines.append("")
             continue
 
         # Revenue + top 3 apps
-        lines.append(f"- 💰 营收: **{fmt_usd(cur_rev)}**  ·  {pct_change_md(cur_rev, prv_rev)}")
+        lines.append(f"- 💰 Revenue: **{fmt_usd(cur_rev)}**  ·  {pct_change_md(cur_rev, prv_rev)}")
         top_rev = _top_n(cur, prev, live_apps, "revenue_usd", n=3)
         for rank_i, (name, c_val, p_val) in enumerate(top_rev, 1):
             share = (c_val / cur_rev * 100) if cur_rev else 0.0
@@ -512,7 +502,7 @@ def render(dims: list[dict[str, Any]], live_apps: set[str]) -> None:
             )
 
         # Downloads + top 3 apps
-        lines.append(f"- 📥 下载: **{fmt_int(cur_dl)}**  ·  {pct_change_md(cur_dl, prv_dl)}")
+        lines.append(f"- 📥 Downloads: **{fmt_int(cur_dl)}**  ·  {pct_change_md(cur_dl, prv_dl)}")
         top_dl = _top_n(cur, prev, live_apps, "downloads", n=3)
         for rank_i, (name, c_val, p_val) in enumerate(top_dl, 1):
             share = (c_val / cur_dl * 100) if cur_dl else 0.0
@@ -524,8 +514,8 @@ def render(dims: list[dict[str, Any]], live_apps: set[str]) -> None:
 
     lines.append("---")
     lines.append("")
-    lines.append("> ⓘ 营收为多币种按近似汇率折算为 USD（非财务对账数据）。Apple 日报延迟 1–2 天。")
-    lines.append("> 本月对比的是上月**整月**；前 7/30 天对比的是再往前 7/30 天。")
+    lines.append("> ⓘ Revenue is multi-currency, converted to USD via approximate FX (not finance-grade). Apple daily reports lag 1–2 days.")
+    lines.append("> This month compares against the **entire previous month**; last 7/30 days compare against the 7/30 days before that.")
 
     md = "\n".join(lines)
     print(md)

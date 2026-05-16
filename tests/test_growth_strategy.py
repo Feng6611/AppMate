@@ -136,15 +136,15 @@ def test_determine_stage_cold_by_low_reviews():
     from growth_strategy import determine_stage
     sales = {"D30": 500, "D30_prev": 400, "slope": 1.25}
     stage, ev = determine_stage(sales, total_reviews=10)
-    assert stage == "冷启动"
-    assert any("评价" in s for s in ev)
+    assert stage == "cold_start"
+    assert any("reviews" in s for s in ev)
 
 
 def test_determine_stage_cold_by_low_d30():
     from growth_strategy import determine_stage
     sales = {"D30": 50, "D30_prev": 30, "slope": 1.67}
     stage, ev = determine_stage(sales, total_reviews=100)
-    assert stage == "冷启动"
+    assert stage == "cold_start"
     assert any("D30=50" in s for s in ev)
 
 
@@ -152,25 +152,25 @@ def test_determine_stage_decline():
     from growth_strategy import determine_stage
     sales = {"D30": 200, "D30_prev": 300, "slope": 0.67}
     stage, ev = determine_stage(sales, total_reviews=50)
-    assert stage == "衰退"
-    assert any("跌" in s for s in ev)
+    assert stage == "decline"
+    assert any("down" in s for s in ev)
 
 
 def test_determine_stage_growth():
     from growth_strategy import determine_stage
     sales = {"D30": 500, "D30_prev": 200, "slope": 2.5}
     stage, ev = determine_stage(sales, total_reviews=100)
-    assert stage == "早期增长"
-    assert any("涨" in s for s in ev)
+    assert stage == "early_growth"
+    assert any("up" in s for s in ev)
 
 
 def test_determine_stage_plateau_at_boundaries():
-    """slope = 0.8 / 1.0 / 1.2 should all be 平台期 (strict boundaries)."""
+    """slope = 0.8 / 1.0 / 1.2 should all be plateau (strict boundaries)."""
     from growth_strategy import determine_stage
     for slope in (0.8, 1.0, 1.2):
         sales = {"D30": 200, "D30_prev": 200, "slope": slope}
         stage, _ = determine_stage(sales, total_reviews=50)
-        assert stage == "平台期", f"slope={slope} should be 平台期, got {stage}"
+        assert stage == "plateau", f"slope={slope} should be plateau, got {stage}"
 
 
 # --- extract_aso_state -------------------------------------------------
@@ -338,7 +338,7 @@ def test_build_phase_a_full_schema(tmp_path):
     assert out["bundle_id"] == "com.demo"
     assert out["market"] == "US"
     assert "D30" in out["sales"]
-    assert out["stage"] in {"冷启动", "衰退", "早期增长", "平台期"}
+    assert out["stage"] in {"cold_start", "decline", "early_growth", "plateau"}
     assert out["aso"]["primary_market_top10_keywords"] == 1  # demo=5, app=12 → only demo
     assert out["competitors_generated_at"] == "2026-05-01T00:00:00+00:00"
     assert out["competitors"][0]["name"] == "Rival"
@@ -369,7 +369,7 @@ def test_build_phase_a_cold_start_with_zero_reviews(tmp_path):
     _write_competitors_json(tmp_path, slug)
     out = build_phase_a(app, {}, {}, today=dt.date(2026, 5, 13), data_dir=tmp_path)
     assert out is not None
-    assert out["stage"] == "冷启动"
+    assert out["stage"] == "cold_start"
     assert out["sales"]["D30"] == 0
 
 
@@ -401,7 +401,7 @@ def test_main_writes_phase_a_file(monkeypatch, tmp_path):
     assert expected.exists()
     data = json.loads(expected.read_text())
     assert data["bundle_id"] == "com.demo"
-    assert data["stage"] == "冷启动"
+    assert data["stage"] == "cold_start"
     assert "competitor_seed" not in data
     assert "competitors_source" in data
 

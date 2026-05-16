@@ -275,7 +275,7 @@ def top_3_by_30d_downloads() -> tuple[list[dict[str, Any]], dt.date]:
     by_day = sr.aggregate_by_day(reports)
     dims = sr.build_dimensions(by_day)
     live = sr.load_live_apps()
-    last30 = next(d for d in dims if d["label"].startswith("前30天"))
+    last30 = next(d for d in dims if d["label"] == "Last 30 days")
     ranked = sorted(
         ((name, m.get("downloads", 0)) for name, m in last30["current_data"].items() if name in live),
         key=lambda kv: -kv[1],
@@ -361,11 +361,11 @@ def render_app_section(
         })
     market_rows.sort(key=lambda m: -m["dl_yesterday"])
 
-    lines.append(f"### 🌍 各市场表现（按昨日下载量降序，下载日期 {data_today:%Y-%m-%d}）")
+    lines.append(f"### 🌍 Per-market performance (sorted by yesterday's downloads desc, download date {data_today:%Y-%m-%d})")
     lines.append("")
-    lines.append("> 关键词来源标签 — T: 主标题 · S: 副标题 · K: 关键词字段")
+    lines.append("> Keyword source tags — T: title · S: subtitle · K: keyword field")
     lines.append("")
-    lines.append("| 市场 | 昨日下载 | 排名 ≤ #20 的关键词（[来源]） |")
+    lines.append("| Market | Downloads (yesterday) | Keywords ranked ≤ #20 ([source]) |")
     lines.append("|---|---:|---|")
     for row in market_rows:
         flag = _flag(row["country"])
@@ -374,7 +374,7 @@ def render_app_section(
                 f"`{k}` **#{p}** [{s}]" for k, p, s in row["top20"]
             )
         else:
-            kws_cell = "_无_"
+            kws_cell = "_none_"
         lines.append(
             f"| {flag} {row['country']} (`{row['locale']}`) | "
             f"{row['dl_yesterday']:,} | {kws_cell} |"
@@ -389,10 +389,10 @@ def render_app_section(
     ]
     leftover.sort(key=lambda x: -x[1])
     if leftover:
-        leftover_str = "、".join(
+        leftover_str = ", ".join(
             f"{_flag(cc)} {cc} ({n})" for cc, n in leftover[:10]
         )
-        lines.append(f"> 📌 还有下载但无对应 locale 关键词的市场：{leftover_str}")
+        lines.append(f"> 📌 Markets with downloads but no matching locale keywords: {leftover_str}")
         lines.append("")
 
     return lines
@@ -412,12 +412,12 @@ def main() -> int:
     rank_cache = load_rank_cache()
 
     lines: list[str] = []
-    lines.append("# 🎯 ASO 关键词排名日报")
+    lines.append("# 🎯 ASO Keyword Ranking Daily Report")
     lines.append("")
-    lines.append(f"- 🕐 生成时间: **{dt.datetime.now():%Y-%m-%d %H:%M}**")
-    lines.append(f"- 📅 下载数据日期: **{data_today:%Y-%m-%d}**")
-    lines.append(f"- 🔍 排名: iTunes Search Top-200（与 App Store 网页版同源）")
-    lines.append(f"- 📱 排名口径: 前 30 日下载量最高的 3 个上架 App")
+    lines.append(f"- 🕐 Generated: **{dt.datetime.now():%Y-%m-%d %H:%M}**")
+    lines.append(f"- 📅 Download data date: **{data_today:%Y-%m-%d}**")
+    lines.append(f"- 🔍 Rank: iTunes Search Top-200 (same source as App Store web)")
+    lines.append(f"- 📱 Scope: top 3 live apps by last-30-day downloads")
     lines.append("")
     lines.append("---")
     lines.append("")

@@ -229,7 +229,7 @@ def top_3_by_30d_downloads() -> tuple[list[dict[str, Any]], dt.date]:
     by_day = sr.aggregate_by_day(reports)
     dims = sr.build_dimensions(by_day)
     live = sr.load_live_apps()
-    last30 = next(d for d in dims if d["label"].startswith("前30天"))
+    last30 = next(d for d in dims if d["label"] == "Last 30 days")
     ranked = sorted(
         ((name, m.get("downloads", 0)) for name, m in last30["current_data"].items() if name in live),
         key=lambda kv: -kv[1],
@@ -379,44 +379,44 @@ def _classify(slot: dict[str, Any]) -> tuple[str, str]:
 
     # 🔥 High-value core: in metadata + rank ≤ 10 + popularity ≥ 30
     if has_meta and rank and rank <= 10 and pop >= 30:
-        return "🔥", "高价值核心词"
+        return "🔥", "High-value core"
 
     # ✅ Solid asset: in metadata + good rank
     if has_meta and rank and rank <= 10:
-        return "✅", "保留 / 核心"
+        return "✅", "Keep / core"
     if has_meta and rank and rank <= 50 and pop >= 10:
-        return "✅", "保留"
+        return "✅", "Keep"
 
     # ➕ Easy win: NOT in metadata + Apple ranks you ≤ 50 + popularity ≥ 30
     if not has_meta and rank and rank <= 50 and pop >= 30:
-        return "➕", "建议加入（高热度+你已相关）"
+        return "➕", "Add (high popularity, you already rank)"
 
     # 🎯 Aspirational: high popularity but rank weak — needs work
     if pop >= 50 and (not rank or rank > 50):
-        return "🎯", "高热度但未排进，攻坚"
+        return "🎯", "High popularity, no rank — push for it"
 
     # 🔁 In metadata + has popularity, but rank weak — copy needs fixing
     if has_meta and pop >= 10 and (not rank or rank > 50):
-        return "🔁", "覆盖但未排好，文案需调"
+        return "🔁", "In metadata but rank weak — copy needs work"
 
     # ❌ Drop: in metadata + pop < 5 + (no rank OR rank > 100)
     if has_meta and pop < 5 and (not rank or rank > 100):
-        return "❌", "建议移除（无热度无排名）"
+        return "❌", "Remove (no popularity, no rank)"
 
     return "", ""
 
 
 def render(results: list[dict[str, Any]], data_today: dt.date) -> str:
     lines: list[str] = []
-    lines.append("# 🎯 ASO 优化建议日报（单市场聚焦）")
+    lines.append("# 🎯 ASO Optimization Daily Report (single-market focus)")
     lines.append("")
-    lines.append(f"- 🕐 生成时间: **{dt.datetime.now():%Y-%m-%d %H:%M}**")
-    lines.append(f"- 📅 销售数据日期: **{data_today:%Y-%m-%d}**")
-    lines.append(f"- 📊 排名: iTunes Search Top-200（与 App Store 网页版同源）")
-    lines.append(f"- 🔥 热度 / 难度: 内部指标（1-99）")
+    lines.append(f"- 🕐 Generated: **{dt.datetime.now():%Y-%m-%d %H:%M}**")
+    lines.append(f"- 📅 Sales data date: **{data_today:%Y-%m-%d}**")
+    lines.append(f"- 📊 Rank: iTunes Search Top-200 (same source as App Store web)")
+    lines.append(f"- 🔥 Popularity / difficulty: internal metric (1-99)")
     lines.append("")
-    lines.append("> 来源 — **T**: 主标题 · **S**: 副标题 · **K**: 关键词字段 · **X**: Apple Suggestions 新发现")
-    lines.append("> 难度: ≥70 🔴 难, 50-69 🟡 中, <50 🟢 易")
+    lines.append("> Source — **T**: title · **S**: subtitle · **K**: keyword field · **X**: new discovery from Apple Suggestions")
+    lines.append("> Difficulty: ≥70 🔴 hard, 50-69 🟡 medium, <50 🟢 easy")
     lines.append("")
     lines.append("---")
     lines.append("")
@@ -426,14 +426,14 @@ def render(results: list[dict[str, Any]], data_today: dt.date) -> str:
         plat_label = PLATFORM_LABEL.get(R["platform"], R["platform"])
         lines.append(f"## {idx}. {R['name']}  ·  {plat_label}")
         lines.append("")
-        lines.append(f"**主市场**: {flag} {R['country']} (`{R['locale']}`)  ·  近 30 日下载 **{R['downloads_30d']:,}**")
+        lines.append(f"**Main market**: {flag} {R['country']} (`{R['locale']}`)  ·  last 30 days downloads **{R['downloads_30d']:,}**")
         if not R["is_localized"]:
             lines.append("")
-            lines.append(f"> ⚠️ 该 app 没有 **{R['country']}** 对应语言族的本地化 — 这是一个 ASO 空白机会")
+            lines.append(f"> ⚠️ This app has no localization for the **{R['country']}** language family — that's an ASO blank-space opportunity")
         lines.append("")
-        lines.append(f"- 主标题: `{R['title'] or '—'}`")
-        lines.append(f"- 副标题: `{R['subtitle'] or '—'}`")
-        lines.append(f"- 关键词: `{R['keywords_raw'] or '—'}`")
+        lines.append(f"- Title: `{R['title'] or '—'}`")
+        lines.append(f"- Subtitle: `{R['subtitle'] or '—'}`")
+        lines.append(f"- Keywords: `{R['keywords_raw'] or '—'}`")
         lines.append("")
 
         # Build sortable rows. Primary key: popularity desc; tiebreak: rank asc.
@@ -454,9 +454,9 @@ def render(results: list[dict[str, Any]], data_today: dt.date) -> str:
 
         filtered_rows = [r for _, r in rows if _has_signal(r)]
 
-        lines.append("### 词集合分析（按 popularity 降序）")
+        lines.append("### Keyword set analysis (sorted by popularity desc)")
         lines.append("")
-        lines.append("| 关键词 | 来源 | 热度 | 难度 | 竞品 | 我的排名 | 建议 |")
+        lines.append("| Keyword | Source | Popularity | Difficulty | Competitors | My rank | Verdict |")
         lines.append("|---|:-:|:-:|:-:|:-:|:-:|---|")
         for row in filtered_rows[:40]:
             kw = row["kw"]
@@ -500,13 +500,13 @@ def render(results: list[dict[str, Any]], data_today: dt.date) -> str:
                 fix.append(row["kw"])
             elif emoji == "🎯":
                 aspire.append(row["kw"])
-        lines.append("### 优化建议")
+        lines.append("### Optimization checklist")
         lines.append("")
-        lines.append(f"- 🔥/✅ **保留核心** ({len(keep)}): " + (", ".join(f"`{k}`" for k in keep) or "—"))
-        lines.append(f"- ➕ **建议加入** ({len(add)}): " + (", ".join(f"`{k}`" for k in add) or "—"))
-        lines.append(f"- 🎯 **攻坚（高热度未排好）** ({len(aspire)}): " + (", ".join(f"`{k}`" for k in aspire) or "—"))
-        lines.append(f"- 🔁 **文案需调** ({len(fix)}): " + (", ".join(f"`{k}`" for k in fix) or "—"))
-        lines.append(f"- ❌ **建议移除** ({len(drop)}): " + (", ".join(f"`{k}`" for k in drop) or "—"))
+        lines.append(f"- 🔥/✅ **Keep (core)** ({len(keep)}): " + (", ".join(f"`{k}`" for k in keep) or "—"))
+        lines.append(f"- ➕ **Add** ({len(add)}): " + (", ".join(f"`{k}`" for k in add) or "—"))
+        lines.append(f"- 🎯 **Push for (high popularity, no rank)** ({len(aspire)}): " + (", ".join(f"`{k}`" for k in aspire) or "—"))
+        lines.append(f"- 🔁 **Copy needs work** ({len(fix)}): " + (", ".join(f"`{k}`" for k in fix) or "—"))
+        lines.append(f"- ❌ **Remove** ({len(drop)}): " + (", ".join(f"`{k}`" for k in drop) or "—"))
         lines.append("")
         lines.append("---")
         lines.append("")

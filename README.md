@@ -2,7 +2,7 @@
 
 A **Claude Code plugin** — an App Store Connect operations toolkit for indie developers. Python data-layer scripts plus LLM-driven skills that cover **sales reporting, ASO optimization, ASO daily monitoring, feature ideation, competitor research, and growth strategy**.
 
-Design pattern: scripts do the deterministic data work (API calls, caching, rank lookups); the LLM does everything that needs semantic judgment (Chinese tokenization, candidate generation, strategy reasoning, report rendering). Each workflow involves you only at the start and the end.
+Design pattern: scripts do the deterministic data work (API calls, caching, rank lookups); the LLM does everything that needs semantic judgment (CJK / Latin tokenization of App Store metadata, candidate generation, strategy reasoning, report rendering). Each workflow involves you only at the start and the end.
 
 ---
 
@@ -97,7 +97,7 @@ All three green = every workflow can run.
 | `/appmate-aso-optimize <app>` | Deep ASO optimization for one app. Produces three paste-ready strings (title 30 char / subtitle 30 char / keywords 100 char) per a ten-section methodology with §-numbered rules. Outputs an OLD vs NEW table and an addition/deletion checklist with `pop / diff / rank` columns. | ~2 min |
 | `/appmate-aso-daily` | Keyword-ranking daily report for your top-3 apps by 30-day downloads. LLM-tokenizes each app's title / subtitle / keywords, checks rank via iTunes Search Top-200, filters to rank ≤ 20, diffs against yesterday's snapshot. | ~1 min |
 | `/appmate-feature-ideas <app>` | Prioritized feature recommendations for one app, built from raw last-90-days reviews (LLM classifies complaint / suggestion / praise on its own) + the curated rival set from `/appmate-competitors` (auto-chained on first run for an app, then cached — you get both reports out of one ask). Two sentences per idea (what + why), no jargon, no scores shown. | ~1 min (or +1 min on first run for the chained `/appmate-competitors`) |
-| `/appmate-competitors <app>` | Find the top 5-10 rivals outranking one app on its own core keywords. Pure iTunes Search SERP overlap, hard-filtered by category + outrank density, LLM relevance pass on name+description. Outputs a Chinese markdown report + a stable JSON (`data/competitors_<slug>.json`) for future downstream skills to consume. | ~1 min |
+| `/appmate-competitors <app>` | Find the top 5-10 rivals outranking one app on its own core keywords. Pure iTunes Search SERP overlap, hard-filtered by category + outrank density, LLM relevance pass on name+description. Outputs a markdown report (in the user's conversation language) + a stable JSON (`data/competitors_<slug>.json`) for future downstream skills to consume. | ~1 min |
 | `/appmate-growth <app>` | Stage-diagnosed growth strategy (cold start / early growth / plateau / decline). 3-5 strategies, each with 4 executable steps and a measurement step. | ~1 min |
 
 App arguments accept **App Store ID / bundle ID / SKU / fuzzy name match**.
@@ -115,7 +115,13 @@ App arguments accept **App Store ID / bundle ID / SKU / fuzzy name match**.
 /appmate-growth 1482080766
 ```
 
-All reports are rendered as **Chinese markdown** by design (the formatting conventions are tuned for Chinese ASO and Chinese App Store reporting). The source code, commit messages, and this README are in English so any maintainer can read them.
+### Output language
+
+Reports are **rendered in the same language the user has been using in this conversation** (English by default; Claude switches automatically if the user has been writing in Chinese, Japanese, Spanish, etc.). The source code, commit messages, this README, and the Python scripts' raw template strings are all in English; Claude translates the headers / labels / prose on the fly when pasting the final report back.
+
+App Store metadata strings (proposed title / subtitle / keywords from `/appmate-aso-optimize`, competitor app names, the keyword tokens themselves) stay in the **target App Store's locale** — e.g. zh-Hans strings for the CN store remain zh-Hans regardless of the conversation language. Only the surrounding explanation, table headers, and verdict labels follow the user.
+
+Apple sales report dates lag 1-2 days — every workflow auto-anchors to the most recent day with data.
 
 ---
 
@@ -172,7 +178,7 @@ python3 -m pytest
 | `/appmate-*` commands not appearing in Claude Code | `/plugin install appmate@appmate-marketplace` did not finish; re-run it. Or check `/plugin` to confirm the plugin is enabled. |
 | `ModuleNotFoundError: No module named 'jwt'` | `pip install -r requirements.txt` from the plugin directory. |
 | `analytics report request returned 403` | App Analytics sharing is not enabled in your App Store Connect web UI — separate authorization step. |
-| Apple sales report shows "暂无" for today | Apple's daily report lags 1-2 days; the script auto-anchors to the most recent day with data. Re-run tomorrow. |
+| Apple sales report shows "N/A" / "no data" for today | Apple's daily report lags 1-2 days; the script auto-anchors to the most recent day with data. Re-run tomorrow. |
 | `fuzzy match` finds the wrong app | Pass the exact App Store ID or bundle ID instead of a name. |
 | `AppMate refuses to run — the configured API key has write access` | Your API key has Developer / Finance / Admin (caught by the probe) or App Manager (caught by the docs). Revoke the key in App Store Connect, generate a new one with **only read-only roles** (Sales / Access to Reports / Customer Support / Marketing), replace the `.p8` and `key_id`, delete `data/key_safety.json`, re-run `python3 scripts/appmate_config.py check`. |
 | `Could not reach App Store Connect to verify key roles` | Network error during the role probe. AppMate will not start without a successful probe — fix connectivity and retry. |
