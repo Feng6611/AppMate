@@ -24,6 +24,7 @@ def test_constants_match_spec():
     assert cr.MIN_RIVALS_FOR_REPORT == 3
     assert cr.TOP_K_KEYWORDS_PER_CARD == 3
     assert cr.SELF_NORANK_CEILING == 200
+    assert cr.SERP_CACHE_TTL_DAYS == 7
 
 
 def test_fetch_primary_genre_id_hits_cache(tmp_path, monkeypatch):
@@ -573,3 +574,131 @@ def test_show_a_prints_summary(monkeypatch, tmp_path, capsys):
     out = capsys.readouterr().out
     assert "Demo" in out
     assert "6007" in out
+
+
+def test_show_b_prints_summary(monkeypatch, tmp_path, capsys):
+    """cmd_show_b prints the candidate count and top-10 list."""
+    import competitor_research as cr
+    phase_b_path = tmp_path / "phase_b_competitors_demo_us.json"
+    phase_b_path.write_text(json.dumps({
+        "app": "Demo",
+        "candidates": [
+            {"itunes_id": "1", "name": "Rival One", "threat_score": 5000,
+             "outrank_count": 4, "avg_rank_diff": 7.5},
+            {"itunes_id": "2", "name": "Rival Two", "threat_score": 3000,
+             "outrank_count": 3, "avg_rank_diff": 4.0},
+        ],
+    }))
+    monkeypatch.setattr(cr, "OUTPUT_DIR", tmp_path)
+    rc = cr.cmd_show_b("Demo")
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Demo" in out
+    assert "2 candidates" in out
+    assert "Rival One" in out
+    assert "Rival Two" in out
+    assert "5000" in out
+
+
+def test_show_b_returns_2_when_no_phase_b(monkeypatch, tmp_path, capsys):
+    """cmd_show_b returns 2 with stderr message when no phase_b found."""
+    import competitor_research as cr
+    monkeypatch.setattr(cr, "OUTPUT_DIR", tmp_path)
+    rc = cr.cmd_show_b("Nonexistent")
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "no phase_b file for" in err
+
+
+def test_lookup_popularity_returns_1_on_exception(monkeypatch):
+    """Spec §13 requirement: keyword_local failure → fallback popularity=1."""
+    import competitor_research as cr
+
+    def boom(*a, **kw):
+        raise RuntimeError("table missing")
+    monkeypatch.setattr(cr, "_kw_lookup_popularity", boom)
+    assert cr._lookup_popularity("便签", "cn") == 1
+
+
+def test_lookup_popularity_returns_1_on_non_dict_response(monkeypatch):
+    """Defensive: if keyword_local ever returns non-dict, fall back to 1."""
+    import competitor_research as cr
+    monkeypatch.setattr(cr, "_kw_lookup_popularity", lambda *a, **kw: None)
+    assert cr._lookup_popularity("便签", "cn") == 1
+    monkeypatch.setattr(cr, "_kw_lookup_popularity", lambda *a, **kw: 42)
+    assert cr._lookup_popularity("便签", "cn") == 1
+
+
+def test_lookup_popularity_extracts_dict_popularity(monkeypatch):
+    """Happy path: dict with popularity field returns int."""
+    import competitor_research as cr
+    monkeypatch.setattr(cr, "_kw_lookup_popularity",
+                        lambda kw, store: {"popularity": 76, "difficulty": 40})
+    assert cr._lookup_popularity("便签", "cn") == 76
+
+
+def test_rank_keyword_with_details_refetches_after_cached_error(tmp_path, monkeypatch):
+    """Fix 1: a cached _error entry must NOT short-circuit; the next call refetches."""
+    import competitor_research as cr
+
+    cache_path = tmp_path / "serp.json"
+    cache_path.write_text(json.dumps({
+        "software|cn|便签": {
+            "_error": "http_503",
+            "entries": [],
+        },
+    }))
+    monkeypatch.setattr(cr, "SERP_DETAILS_CACHE_PATH", cache_path)
+
+    monkeypatch.setattr(cr.requests, "get", lambda *a, **kw: _fake_serp_response([
+        (100, "com.a", "App A", 6007, 4.5, 1000, "desc"),
+    ]))
+    out = cr.rank_keyword_with_details("便签", country="CN", entity="software")
+    assert len(out) == 1
+    assert out[0]["itunes_id"] == "100"  # refetched, not the cached empty
+
+
+def test_rank_keyword_with_details_refetches_after_ttl(tmp_path, monkeypatch):
+    """Fix 1: entries older than SERP_CACHE_TTL_DAYS trigger refetch."""
+    import competitor_research as cr
+
+    cache_path = tmp_path / "serp.json"
+    old_ts = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=8)).isoformat()
+    cache_path.write_text(json.dumps({
+        "software|cn|便签": {
+            "fetched_at": old_ts,
+            "entries": [{"itunes_id": "999", "rank_in_serp": 1}],
+        },
+    }))
+    monkeypatch.setattr(cr, "SERP_DETAILS_CACHE_PATH", cache_path)
+
+    monkeypatch.setattr(cr.requests, "get", lambda *a, **kw: _fake_serp_response([
+        (100, "com.a", "App A", 6007, 4.5, 1000, "desc"),
+    ]))
+    out = cr.rank_keyword_with_details("便签", country="CN", entity="software")
+    assert len(out) == 1
+    assert out[0]["itunes_id"] == "100"  # refetched, not 999
+
+
+def test_country_to_locale_prefers_market_match():
+    """Fix 7: market-aware locale picking."""
+    import competitor_research as cr
+    app = {
+        "core": {"primaryLocale": "en-US"},
+        "appInfo": {"localizations": [
+            {"locale": "en-US"}, {"locale": "ja"}, {"locale": "zh-Hans"},
+        ]},
+    }
+    assert cr._country_to_locale("JP", app) == "ja"
+    assert cr._country_to_locale("CN", app) == "zh-Hans"
+    assert cr._country_to_locale("US", app) == "en-US"
+
+
+def test_country_to_locale_falls_back_to_primary_when_no_match():
+    """Fix 7: market not in available locales -> primaryLocale."""
+    import competitor_research as cr
+    app = {
+        "core": {"primaryLocale": "en-US"},
+        "appInfo": {"localizations": [{"locale": "en-US"}]},
+    }
+    assert cr._country_to_locale("CN", app) == "en-US"

@@ -47,6 +47,9 @@ TOP_K_KEYWORDS_PER_CARD = 3
 # --- Scoring ---
 SELF_NORANK_CEILING = 200
 
+# --- Cache TTL ---
+SERP_CACHE_TTL_DAYS = 7
+
 # --- Paths (overridable in tests) ---
 # appmate_config exposes DATA_DIR as a module-level constant and data_path(name)
 # as a helper. There is NO data_dir() function — using the constant directly.
@@ -73,6 +76,20 @@ def _save_json_cache(path: pathlib.Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
 
 
+def _is_fresh(iso_ts: str | None, max_age_days: int) -> bool:
+    """True iff iso_ts parses and is within max_age_days of now."""
+    if not iso_ts:
+        return False
+    try:
+        # Accept both "...Z" and "...+00:00" forms
+        fetched = dt.datetime.fromisoformat(iso_ts.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return False
+    if fetched.tzinfo is None:
+        fetched = fetched.replace(tzinfo=dt.timezone.utc)
+    return dt.datetime.now(dt.timezone.utc) - fetched < dt.timedelta(days=max_age_days)
+
+
 def fetch_primary_genre_id(itunes_id: str, country: str) -> int:
     """Return the app's primaryGenreId from iTunes Lookup, cached forever.
 
@@ -85,10 +102,12 @@ def fetch_primary_genre_id(itunes_id: str, country: str) -> int:
 
     params = {"id": str(itunes_id), "country": country.upper()}
     last_exc: Exception | None = None
+    last_status: int | None = None
     for attempt in range(SERP_RETRIES):
         try:
             r = requests.get(ITUNES_LOOKUP_URL, params=params, timeout=SERP_TIMEOUT_S)
             if r.status_code in (429, 502, 503, 504):
+                last_status = r.status_code
                 time.sleep(1.5 * (attempt + 1))
                 continue
             r.raise_for_status()
@@ -107,7 +126,13 @@ def fetch_primary_genre_id(itunes_id: str, country: str) -> int:
         except (requests.ConnectionError, requests.Timeout) as e:
             last_exc = e
             time.sleep(0.5 * (2 ** attempt))
-    raise RuntimeError(f"iTunes Lookup failed after {SERP_RETRIES} retries: {last_exc}")
+    if last_exc is not None:
+        detail = f"{type(last_exc).__name__}: {last_exc}"
+    elif last_status is not None:
+        detail = f"HTTP {last_status} (rate limited / server error)"
+    else:
+        detail = "unknown error"
+    raise RuntimeError(f"iTunes Lookup failed after {SERP_RETRIES} retries: {detail}")
 
 
 from aso_optimize_v2 import find_app, slugify  # noqa: E402
@@ -188,15 +213,56 @@ def _platform_of(app: dict[str, Any]) -> str:
     return versions[0].get("attributes", {}).get("platform", "IOS") if versions else "IOS"
 
 
+# Country → preferred locale prefix (most common ASO target locales).
+# Used by _country_to_locale to pick the localization matching the chosen market.
+COUNTRY_TO_LANG_PREFIX: dict[str, tuple[str, ...]] = {
+    "US": ("en",), "GB": ("en",), "AU": ("en",), "CA": ("en", "fr"),
+    "CN": ("zh-Hans", "zh"), "HK": ("zh-Hant", "zh"), "TW": ("zh-Hant", "zh"),
+    "JP": ("ja",), "KR": ("ko",),
+    "DE": ("de",), "FR": ("fr",), "ES": ("es",), "IT": ("it",), "NL": ("nl",),
+    "BR": ("pt-BR", "pt"), "PT": ("pt-PT", "pt"),
+    "RU": ("ru",), "MX": ("es-MX", "es"),
+    "SE": ("sv",), "TH": ("th",), "VN": ("vi",), "TR": ("tr",), "PL": ("pl",),
+    "ID": ("id",), "IN": ("en", "hi"),
+}
+
+
 def _country_to_locale(country: str, app: dict[str, Any]) -> str:
-    """Pick a locale string. Prefer the app's primaryLocale; otherwise the first
-    locale that exists in appInfo.localizations; final fallback 'en-US'."""
+    """Pick the app localization locale most relevant to the chosen market.
+
+    Resolution order:
+      1. App localization whose locale ends with -<country> (e.g. en-US for US).
+      2. App localization matching the country's preferred language prefix.
+      3. App's `primaryLocale`.
+      4. First app localization.
+      5. "en-US".
+    """
+    country_up = (country or "").upper()
+    locs = (app.get("appInfo") or {}).get("localizations") or []
+    available = [(loc.get("locale") or "") for loc in locs if loc.get("locale")]
+
+    # 1. Exact country suffix match (e.g. en-US for US)
+    target = f"-{country_up}"
+    for loc in available:
+        if loc.upper().endswith(target):
+            return loc
+
+    # 2. Language prefix match
+    for prefix in COUNTRY_TO_LANG_PREFIX.get(country_up, ()):
+        for loc in available:
+            if loc.startswith(prefix):
+                return loc
+
+    # 3. primaryLocale (use it even if not in localizations)
     primary = (app.get("core") or {}).get("primaryLocale") or ""
     if primary:
         return primary
-    locs = (app.get("appInfo") or {}).get("localizations") or []
-    if locs:
-        return locs[0].get("locale", "en-US")
+
+    # 4. First localization
+    if available:
+        return available[0]
+
+    # 5. Final fallback
     return "en-US"
 
 
@@ -278,20 +344,26 @@ def rank_keyword_with_details(
     """
     cache = _load_json_cache(SERP_DETAILS_CACHE_PATH)
     key = f"{entity}|{country.lower()}|{keyword}"
-    if key in cache and "entries" in cache[key]:
-        return cache[key]["entries"]
+    cached = cache.get(key)
+    if (cached
+            and cached.get("entries") is not None
+            and "_error" not in cached
+            and _is_fresh(cached.get("fetched_at"), SERP_CACHE_TTL_DAYS)):
+        return cached["entries"]
 
     params = {"term": keyword, "country": country.upper(),
               "entity": entity, "limit": SERP_LIMIT}
     last_exc: Exception | None = None
+    last_status: int | None = None
     for attempt in range(SERP_RETRIES):
         try:
             r = requests.get(ITUNES_BASE, params=params, timeout=SERP_TIMEOUT_S)
             if r.status_code in (429, 502, 503, 504):
+                last_status = r.status_code
                 time.sleep(1.5 * (attempt + 1))
                 continue
             if not r.ok:
-                cache[key] = {"_error": r.status_code, "entries": []}
+                cache[key] = {"_error": f"http_{r.status_code}", "entries": []}
                 _save_json_cache(SERP_DETAILS_CACHE_PATH, cache)
                 return []
             raw = r.json().get("results", [])
@@ -319,7 +391,13 @@ def rank_keyword_with_details(
         except (requests.ConnectionError, requests.Timeout) as e:
             last_exc = e
             time.sleep(0.5 * (2 ** attempt))
-    cache[key] = {"_error": f"{type(last_exc).__name__}", "entries": []}
+    if last_exc is not None:
+        err = f"{type(last_exc).__name__}"
+    elif last_status is not None:
+        err = f"http_{last_status}"
+    else:
+        err = "unknown"
+    cache[key] = {"_error": err, "entries": []}
     _save_json_cache(SERP_DETAILS_CACHE_PATH, cache)
     return []
 
