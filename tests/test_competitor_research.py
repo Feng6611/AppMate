@@ -189,3 +189,84 @@ def test_cmd_analyze_returns_2_when_app_not_found(monkeypatch, tmp_path):
     monkeypatch.setattr(cr, "OUTPUT_DIR", tmp_path)
 
     assert cr.cmd_analyze("NoSuchApp") == 2
+
+
+def _fake_serp_response(entries):
+    """entries: list of (track_id, bundle_id, name, genre_id, rating, count, desc)"""
+    class FakeResp:
+        status_code = 200
+        ok = True
+        def __init__(self, results):
+            self._results = results
+        def json(self):
+            return {"resultCount": len(self._results), "results": self._results}
+        def raise_for_status(self):
+            pass
+    results = []
+    for tid, bid, name, gid, rating, rcount, desc in entries:
+        results.append({
+            "trackId": tid, "bundleId": bid, "trackName": name,
+            "primaryGenreId": gid, "averageUserRating": rating,
+            "userRatingCount": rcount, "description": desc,
+        })
+    return FakeResp(results)
+
+
+def test_rank_keyword_with_details_parses_serp(tmp_path, monkeypatch):
+    import competitor_research as cr
+
+    cache_path = tmp_path / "serp.json"
+    monkeypatch.setattr(cr, "SERP_DETAILS_CACHE_PATH", cache_path)
+    monkeypatch.setattr(cr.requests, "get", lambda *a, **kw: _fake_serp_response([
+        (100, "com.a", "App A", 6007, 4.5, 1000, "desc A here"),
+        (101, "com.b", "App B", 6007, 4.7, 5000, "desc B here"),
+    ]))
+
+    out = cr.rank_keyword_with_details("便签", country="CN", entity="software")
+    assert len(out) == 2
+    assert out[0] == {
+        "itunes_id": "100", "bundle_id": "com.a", "name": "App A",
+        "primary_genre_id": 6007, "rating": 4.5, "review_count": 1000,
+        "description": "desc A here", "rank_in_serp": 1,
+    }
+    assert out[1]["rank_in_serp"] == 2
+
+
+def test_rank_keyword_with_details_uses_cache(tmp_path, monkeypatch):
+    import competitor_research as cr
+
+    cache_path = tmp_path / "serp.json"
+    cache_path.write_text(json.dumps({
+        "software|cn|便签": {
+            "fetched_at": "2026-05-16T00:00:00Z",
+            "entries": [{
+                "itunes_id": "100", "bundle_id": "com.a", "name": "App A",
+                "primary_genre_id": 6007, "rating": 4.5, "review_count": 1000,
+                "description": "desc", "rank_in_serp": 1,
+            }],
+        },
+    }))
+    monkeypatch.setattr(cr, "SERP_DETAILS_CACHE_PATH", cache_path)
+
+    def fail_get(*a, **kw):
+        raise AssertionError("must not call network when cached")
+    monkeypatch.setattr(cr.requests, "get", fail_get)
+
+    out = cr.rank_keyword_with_details("便签", country="CN", entity="software")
+    assert len(out) == 1
+    assert out[0]["itunes_id"] == "100"
+
+
+def test_rank_keyword_with_details_persists_cache(tmp_path, monkeypatch):
+    import competitor_research as cr
+
+    cache_path = tmp_path / "serp.json"
+    monkeypatch.setattr(cr, "SERP_DETAILS_CACHE_PATH", cache_path)
+    monkeypatch.setattr(cr.requests, "get", lambda *a, **kw: _fake_serp_response([
+        (100, "com.a", "App A", 6007, 4.5, 1000, "desc"),
+    ]))
+
+    cr.rank_keyword_with_details("便签", country="CN", entity="software")
+    on_disk = json.loads(cache_path.read_text())
+    assert "software|cn|便签" in on_disk
+    assert on_disk["software|cn|便签"]["entries"][0]["itunes_id"] == "100"

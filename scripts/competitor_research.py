@@ -260,3 +260,64 @@ def cmd_analyze(query: str) -> int:
     _write_json(out, phase_a)
     print(f"wrote {out}")
     return 0
+
+
+from aso_report import ITUNES_BASE  # noqa: E402  (existing iTunes Search endpoint)
+
+
+def rank_keyword_with_details(
+    keyword: str, country: str, entity: str = "software",
+) -> list[dict[str, Any]]:
+    """iTunes Search top-200 for one keyword, full per-entry metadata, cached.
+
+    Returns a list of dicts sorted by rank_in_serp ascending. Each dict:
+        {itunes_id, bundle_id, name, primary_genre_id, rating, review_count,
+         description, rank_in_serp}
+    On error after retries, returns an empty list (keyword is skipped).
+    """
+    cache = _load_json_cache(SERP_DETAILS_CACHE_PATH)
+    key = f"{entity}|{country.lower()}|{keyword}"
+    if key in cache and "entries" in cache[key]:
+        return cache[key]["entries"]
+
+    params = {"term": keyword, "country": country.upper(),
+              "entity": entity, "limit": SERP_LIMIT}
+    last_exc: Exception | None = None
+    for attempt in range(SERP_RETRIES):
+        try:
+            r = requests.get(ITUNES_BASE, params=params, timeout=SERP_TIMEOUT_S)
+            if r.status_code in (429, 502, 503, 504):
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            if not r.ok:
+                cache[key] = {"_error": r.status_code, "entries": []}
+                _save_json_cache(SERP_DETAILS_CACHE_PATH, cache)
+                return []
+            raw = r.json().get("results", [])
+            entries: list[dict[str, Any]] = []
+            for i, app in enumerate(raw, 1):
+                tid = app.get("trackId")
+                if tid is None:
+                    continue
+                entries.append({
+                    "itunes_id": str(tid),
+                    "bundle_id": app.get("bundleId", "") or "",
+                    "name": app.get("trackName", "") or "",
+                    "primary_genre_id": int(app.get("primaryGenreId") or 0),
+                    "rating": float(app.get("averageUserRating") or 0.0),
+                    "review_count": int(app.get("userRatingCount") or 0),
+                    "description": app.get("description", "") or "",
+                    "rank_in_serp": i,
+                })
+            cache[key] = {
+                "fetched_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+                "entries": entries,
+            }
+            _save_json_cache(SERP_DETAILS_CACHE_PATH, cache)
+            return entries
+        except (requests.ConnectionError, requests.Timeout) as e:
+            last_exc = e
+            time.sleep(0.5 * (2 ** attempt))
+    cache[key] = {"_error": f"{type(last_exc).__name__}", "entries": []}
+    _save_json_cache(SERP_DETAILS_CACHE_PATH, cache)
+    return []
