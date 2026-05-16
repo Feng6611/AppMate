@@ -5,8 +5,7 @@ See skills/growth-strategy/SKILL.md for the methodology.
 Pipeline:
   1a. App fuzzy match (reuse aso_optimize_v2.find_app)
   1b. Sales trend: D30 / D30_prev / slope / market_concentration
-  1c. Stage detection — one of "冷启动" / "衰退" / "早期增长" / "平台期"
-      (cold start / decline / early growth / plateau)
+  1c. Stage detection — one of "cold_start" / "decline" / "early_growth" / "plateau"
   1d. ASO snapshot: current_locales / primary_market_top10_keywords /
       missing_locales_in_top_markets
   1e. Reviews summary: rating_avg / negative_count_90d / wishlist_count_90d /
@@ -45,8 +44,8 @@ _REVIEW_BUCKET_CAP = 50
 _NEG_RATING_MAX = 3
 _POS_RATING_MIN = 4
 _MIN_BODY_LEN = 10
-_WISH_TRIGGERS = ["希望", "能否", "建议", "求", "请加", "不能", "为什么没有",
-                  "wish", "would love", "please add", "hope", "could you"]
+_WISH_TRIGGERS = ["wish", "would love", "please add", "hope", "could you",
+                  "希望", "能否", "建议", "求", "请加", "不能", "为什么没有"]
 
 
 def _parse_review_date(created: str) -> dt.date | None:
@@ -245,14 +244,15 @@ def compute_sales_trend(
 def determine_stage(sales: dict[str, Any], total_reviews: int) -> tuple[str, list[str]]:
     """Apply the 4-stage detection per the workflow §1c.
 
-    Returned stage values stay in Chinese because they key the methodology
-    cheat-sheet and appear verbatim in the generated report.
+    Returned stage values are stable string keys used by the methodology
+    cheat-sheet and emitted verbatim in the phase_a JSON. The LLM renderer
+    translates them to the user's conversation language at present time.
 
     Priority (top to bottom):
-      1. "冷启动" (cold start): total_reviews < 20 OR D30 < 100
-      2. "衰退" (decline): slope < 0.8
-      3. "早期增长" (early growth): slope > 1.2
-      4. "平台期" (plateau): 0.8 <= slope <= 1.2 (fallback)
+      1. "cold_start": total_reviews < 20 OR D30 < 100
+      2. "decline": slope < 0.8
+      3. "early_growth": slope > 1.2
+      4. "plateau": 0.8 <= slope <= 1.2 (fallback)
     """
     d30 = sales["D30"]
     d30_prev = sales["D30_prev"]
@@ -263,30 +263,30 @@ def determine_stage(sales: dict[str, Any], total_reviews: int) -> tuple[str, lis
         if d30 < STAGE_COLD_D30_THRESHOLD:
             ev.append(f"D30={d30} < {STAGE_COLD_D30_THRESHOLD}")
         if total_reviews < STAGE_COLD_REVIEWS_THRESHOLD:
-            ev.append(f"评价总数 {total_reviews} < {STAGE_COLD_REVIEWS_THRESHOLD}")
-        ev.append(f"评价总数 {total_reviews}")
-        return "冷启动", ev
+            ev.append(f"reviews {total_reviews} < {STAGE_COLD_REVIEWS_THRESHOLD}")
+        ev.append(f"reviews {total_reviews}")
+        return "cold_start", ev
 
     if slope < STAGE_DECLINE_SLOPE:
         pct = round((slope - 1) * 100)
-        return "衰退", [
-            f"D30={d30} (上 30 日 {d30_prev} → 近 30 日 {d30})",
-            f"slope={slope} → 环比跌 {abs(pct)}%",
-            f"评价总数 {total_reviews}，已过冷启动门槛",
+        return "decline", [
+            f"D30={d30} (prior 30 days {d30_prev} → last 30 days {d30})",
+            f"slope={slope} → MoM down {abs(pct)}%",
+            f"reviews {total_reviews}, past the cold-start threshold",
         ]
 
     if slope > STAGE_GROWTH_SLOPE:
         pct = round((slope - 1) * 100)
-        return "早期增长", [
-            f"D30={d30} (上 30 日 {d30_prev} → 近 30 日 {d30})",
-            f"slope={slope} → 环比涨 {pct}%",
-            f"评价总数 {total_reviews}，已过冷启动门槛",
+        return "early_growth", [
+            f"D30={d30} (prior 30 days {d30_prev} → last 30 days {d30})",
+            f"slope={slope} → MoM up {pct}%",
+            f"reviews {total_reviews}, past the cold-start threshold",
         ]
 
-    return "平台期", [
-        f"D30={d30} (上 30 日 {d30_prev} → 近 30 日 {d30})",
-        f"slope={slope} → 环比波动在 ±20% 内",
-        f"评价总数 {total_reviews}",
+    return "plateau", [
+        f"D30={d30} (prior 30 days {d30_prev} → last 30 days {d30})",
+        f"slope={slope} → MoM movement within ±20%",
+        f"reviews {total_reviews}",
     ]
 
 

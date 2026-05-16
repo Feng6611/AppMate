@@ -178,36 +178,38 @@ Each candidate is scored 1-5 on 4 dimensions:
 > 3. **Two sentences per item only**: the first says "what it is / how it interacts", the second says "why do it / what the evidence is".
 > 4. Arrange by composite score high to low (but do not show the score).
 
-The output template and rendered example are in **Chinese** by design — do not translate the rendered deliverable.
+**Rendered in the same language the user has been using in this conversation.** Default to English; if the user has been writing in Chinese / Japanese / Spanish / etc., translate the template headers, labels and prose accordingly. App Store metadata strings (title / subtitle / keywords / competitor app names) must remain in the App Store's source locale (e.g. zh-Hans names stay zh-Hans) — only the surrounding explanation follows the user's conversation language.
+
+The template below is written with English placeholders. Substitute the equivalent words in the user's conversation language when rendering.
 
 ```markdown
-# 🚀 <App 名> · 功能推荐
+# 🚀 <App name> · Feature recommendations
 
-> ⚠️ <证据偏薄警告 — 仅当 reviews 总数 < 10 或 competitors 总数 == 0 时显示。例：「证据偏薄：仅 7 条评论 + 0 个竞品。建议先跑 /appmate-competitors 补充竞品证据，再回看本报告。」>
+> ⚠️ <evidence-thin warning — only shown when total reviews < 10 OR total competitors == 0. Example: "Evidence thin: only 7 reviews + 0 competitors. Recommend running /appmate-competitors first to add competitor evidence, then revisit this report.">
 
-**1. <功能标题>** — <一句话：这个功能是什么、怎么交互>。<一句话：为什么要做、证据是什么>。
+**1. <Feature title>** — <one sentence: what the feature is, how it interacts>. <one sentence: why do it, what's the evidence>.
 
-**2. <功能标题>** — <同上结构>。
+**2. <Feature title>** — <same structure>.
 
-...（共 5-10 条）...
+... (5-10 items total) ...
 
-**N. <功能标题>** — <同上结构>。
+**N. <Feature title>** — <same structure>.
 
 ---
 
-**重点 N 个**：#X / #Y / #Z — 简述各自的核心价值（一句话总结分别对应什么）。
+**Top N**: #X / #Y / #Z — short summary of each item's core value (one sentence each).
 
-要详细化哪个？告诉我编号，我可以帮你写 mini PRD（用户故事 / 验收标准 / 拆分 sprint）。
+Want one expanded? Tell me the number and I can help you write a mini PRD (user stories / acceptance criteria / sprint breakdown).
 ```
 
 ## 3.2 6 layout rules
 
-1. **No jargon**: the user-visible content must not contain `RICE / Reach / Impact / Confidence / Effort / Explore / Exploit / Core value / Onboarding / Delight` — always use plain Chinese.
+1. **No jargon**: the user-visible content must not contain `RICE / Reach / Impact / Confidence / Effort / Explore / Exploit / Core value / Onboarding / Delight` — always use plain prose in the user's conversation language.
 2. **No score numbers**: do not show the composite score or any of the 4-dimension scores.
-3. **Two sentences per item**: first "what it is", second "why". The two sentences are separated by a full-width period `。`.
-4. **Bold feature title**: `**N. 标题**` followed by `— ` (full-width em dash).
+3. **Two sentences per item**: first "what it is", second "why". The two sentences are separated by a period (use the punctuation natural to the user's conversation language — e.g. full-width `。` for Chinese, `.` for English).
+4. **Bold feature title**: `**N. Title**` followed by `— ` (em dash, full-width when the surrounding text is CJK).
 5. **Top evidence warning**: when reviews total < 10 or competitors total == 0, the warning must show.
-6. **Closing "重点 N 个" + "详细化哪个"**: guide the user to follow up.
+6. **Closing "Top N" + "Want one expanded"**: guide the user to follow up (translated to the user's conversation language).
 
 ---
 
@@ -271,7 +273,7 @@ If `feature_ideate.py` exits 2 with `competitors JSON not found`, that is the sa
 - [ ] **No** score numbers (composite score N, R/I/C/E individual scores all absent)
 - [ ] **No** English jargon `RICE / Reach / Impact / Confidence / Effort / Explore / Exploit / Core value / Onboarding / Delight`
 - [ ] **No** single-letter abbreviations `R / I / C / E`
-- [ ] Each feature title uses `**N. 名称**` bold + full-width em dash `—`
+- [ ] Each feature title uses `**N. Name**` bold + em dash `—` (full-width when surrounding text is CJK)
 
 ### Anti-junk
 - [ ] No "single evidence + low confidence" features
@@ -282,4 +284,4 @@ If `feature_ideate.py` exits 2 with `competitors JSON not found`, that is the sa
 ### Delivery
 - [ ] File saved to `data/feature_ideas_<slug>.md`
 - [ ] **Full markdown pasted back into the conversation** (not just "saved")
-- [ ] Closing has the "重点 N 个" + "详细化哪个" guidance section
+- [ ] Closing has the "Top N" + "Want one expanded" guidance section (in the user's conversation language)

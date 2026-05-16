@@ -1,6 +1,6 @@
 ---
 name: aso-optimize
-description: Deep ASO optimization for a single app — produce new App Store title, subtitle, and keyword strings. Use when the user wants to optimize or rewrite an app's ASO metadata, improve keyword rankings, or "跑 ASO 优化" for a specific app.
+description: Deep ASO optimization for a single app — produce new App Store title, subtitle, and keyword strings. Use when the user wants to optimize or rewrite an app's ASO metadata, improve keyword rankings, run an ASO optimization pass for a specific app, or "跑 ASO 优化".
 ---
 
 # ASO Optimization Workflow v3
@@ -33,7 +33,7 @@ If exit code ≠ 0, STOP. Do not invoke any other part of this skill, do not run
 | `data/sales_cache.json` | Sales report (find the main market) | script |
 | **iTunes Search Top-200** | Keyword ranking (same source as the App Store web page) | script |
 | **Keyword reference table** | popularity (1-99) + difficulty (1-99) | script |
-| **LLM (Claude)** | Chinese tokenization / candidate generation / comparison / synthesis | conversation layer |
+| **LLM (Claude)** | CJK / Chinese-Japanese-Korean tokenization (when the App Store metadata is in those languages) / candidate generation / comparison / synthesis | conversation layer |
 | `references/aso-methodology.md` | Full methodology (§1-§12) | LLM reference |
 
 ## User intervention points (only 2)
@@ -62,7 +62,7 @@ python3 scripts/aso_optimize_v2.py analyze <app>
 
 # Step 2 · LLM tokenization (you, conversation layer)
 
-Read the `current_metadata` field of `data/phase_a_<slug>.json` and **cut real ASO words using Chinese semantics**:
+Read the `current_metadata` field of `data/phase_a_<slug>.json` and **cut real ASO words** — apply CJK / Chinese-Japanese-Korean tokenization when the App Store metadata is in those languages (the metadata's own locale, independent of what language you're conversing in with the user):
 
 - Do not rely on jieba (its boundaries are often wrong).
 - Do not emit long CJK mashed runs (e.g. `网络翻译邮箱地图地球`).
@@ -286,7 +286,7 @@ loop:
 | Rule | Application |
 |---|---|
 | ①-⑨ all 9 rules apply | see 7.4 |
-| §10.4 Chinese compression | high-pop words may form a 3-5 word comma-free run |
+| §10.4 CJK compression (zh/ja/ko metadata) | high-pop words may form a 3-5 word comma-free run |
 | Character utilization | ≥ 95/100 char |
 | **Order has no effect** (§7.3 #4 explicit) | sort by pop descending for readability only |
 
@@ -303,45 +303,45 @@ The output footer **must include**:
 
 ## 8.6 Output format (must contain all 6 sections)
 
-> **⚠️ Wording rule (must follow)**: in the deliverable document, **every position / field reference must use the full name** — `主标题 / 副标题 / 关键词` or English `Title / Subtitle / Keywords`. **The single letters T / S / K / X are not allowed** (this applies to section rule text and checklists too). Reason: an abbreviation has no context when the user reviews it.
+> **⚠️ Wording rule (must follow)**: in the deliverable document, **every position / field reference must use the full name** — `Title / Subtitle / Keywords` (or the user's-language equivalent, e.g. `主标题 / 副标题 / 关键词`). **The single letters T / S / K / X are not allowed** (this applies to section rule text and checklists too). Reason: an abbreviation has no context when the user reviews it.
 
 ```markdown
-# <App> · ASO 优化建议
+# <App> · ASO Optimization Suggestions
 
-**生成时间** / **主市场** / **App 信息**
+**Generated at** / **Main market** / **App info**
 
-## 三段建议（直接可粘贴）
+## Three strings (paste-ready)
 
-主标题  (X/30 char): <NEW>
-副标题  (X/30 char): <NEW>
-关键词 (X/100 char): <NEW>
+Title    (X/30 char): <NEW>
+Subtitle (X/30 char): <NEW>
+Keywords (X/100 char): <NEW>
 
-## OLD vs NEW 对照
+## OLD vs NEW comparison
 
-| 字段 | OLD | NEW | Δ |
+| Field | OLD | NEW | Δ |
 
-## 删除清单
+## Deletion list
 
-| 词 | 原位置 | pop | diff | rank | 原因 |
-("原位置" column: write `主标题` / `副标题` / `关键词`, not T/S/K)
+| Word | Original position | pop | diff | rank | Reason |
+("Original position" column: write `Title` / `Subtitle` / `Keywords`, not T/S/K)
 **Column rules**:
 - `pop` / `diff` / `rank` are mandatory — all three numbers are needed to verify §10.1 Tier / §10.4 / §7.2 decisions.
-- `原因` column must be a **plain-language sentence** explaining why the word is being deleted — written so a non-technical reader understands. Cite specific evidence (pop / diff / rank values, Apple behavior, semantic reasoning) instead of `§` shortcuts. The official `§` rule may be cited inline as supporting context, but the bulk of the cell is a readable sentence, not a code-like reference. Bad: `§10.1 Tier 3`. Good: `搜索量为零（pop=5），且 Apple 中文分词器会从主标题"桌面小组件"自动拆出"组件"，再写一次浪费 2 个字符`.
+- `Reason` column must be a **plain-language sentence** explaining why the word is being deleted — written so a non-technical reader understands. Cite specific evidence (pop / diff / rank values, Apple behavior, semantic reasoning) instead of `§` shortcuts. The official `§` rule may be cited inline as supporting context, but the bulk of the cell is a readable sentence, not a code-like reference. Bad: `§10.1 Tier 3`. Good: `Zero search volume (pop=5), and Apple's CJK tokenizer already splits "组件" out of the Title's "桌面小组件" — repeating it wastes 2 chars`.
 
-## 新增清单
+## Addition list
 
-| 词 | 新位置 | pop | diff | rank | 原因 |
-(same: `主标题` / `副标题` / `关键词`)
-**Column rules**: same as 删除清单. The `原因` column is a plain-language sentence stating (a) why this word is worth a slot, (b) which evidence drives the decision (pop / diff / rank), (c) what the expected outcome is (short-term rank push vs long-term weight accumulation). Bad: `§10.1 Tier 4 push`. Good: `pop 65 高位 + diff 48 少见的低难度，OneSearch 又能搜系统短信，放主标题预期 30-60 天能进 top 20`.
+| Word | New position | pop | diff | rank | Reason |
+(same: `Title` / `Subtitle` / `Keywords`)
+**Column rules**: same as the Deletion list. The `Reason` column is a plain-language sentence stating (a) why this word is worth a slot, (b) which evidence drives the decision (pop / diff / rank), (c) what the expected outcome is (short-term rank push vs long-term weight accumulation). Bad: `§10.1 Tier 4 push`. Good: `pop 65 high + diff 48 unusually low; OneSearch can also surface system SMS; placing it in the Title should reach top 20 in 30-60 days`.
 
-## §10.2 双 locale 扩容审计（如适用）
+## §10.2 dual-locale expansion audit (if applicable)
 
-## §10.5 长期权重追踪
+## §10.5 long-term weight tracking
 
-## 📌 交付后建议（必含 — 给用户的可选项）
+## 📌 Post-delivery suggestions (required — user-facing options)
 ```
 
-The deliverable document is written in **Chinese** by design — do not translate the rendered deliverable.
+**Rendered in the same language the user has been using in this conversation.** Default to English; if the user has been writing in Chinese / Japanese / Spanish / etc., translate the template headers, labels and prose accordingly. The proposed App Store metadata strings (title / subtitle / keywords) must remain in the target App Store's locale (e.g. zh-Hans for the CN store) regardless — only the surrounding explanation follows the user's conversation language.
 
 ## 8.7 Post-delivery suggestions (must include — 2 options for the user)
 
@@ -351,45 +351,45 @@ After delivering the 3 strings, **always** append these two suggestions for the 
 
 **Trigger condition**: the main-market locale ∈ `{zh-Hans, zh-Hant, ja, ko}`.
 
-Output template:
+Output template (translate into the user's conversation language; this English version is the source):
 ```markdown
-### 📌 建议 ① · 中日韩场景去逗号压缩
+### 📌 Suggestion ① · CJK comma-free compression
 
-如果你的主市场是 CN/JP/KR/TW/HK，可去掉关键词字段的逗号，
-让 Apple 中文/日文分词器自动 mix-and-match：
+If your main market is CN/JP/KR/TW/HK, you can drop the commas in the Keywords field
+and let Apple's CJK tokenizer mix-and-match automatically:
 
-- **收益**：腾出 N 个字符（每个逗号 1 字符），多塞 N 个 token
-- **风险**：失去"明确目标词"边界，依赖 Apple 自动分词
-- **推荐策略**：高 pop 词（≥ 40）保留逗号；尾部低 pop 长尾可压缩
+- **Gain**: frees N characters (1 per comma), letting you cram N more tokens
+- **Risk**: loses the "explicit target word" boundary, relies on Apple's auto-tokenization
+- **Recommended strategy**: keep commas around high-pop words (≥ 40); compress the low-pop long-tail at the end
 
-对比示例：
-  逗号版 (X/100, N 词):  A,B,C,D,E,F,...
-  压缩版 (Y/100, M 词):  A,B,CDE,FGH,...  ← 末尾压缩
+Comparison:
+  Comma version    (X/100, N words):  A,B,C,D,E,F,...
+  Compressed       (Y/100, M words):  A,B,CDE,FGH,...  ← tail compressed
 
-要应用压缩版吗？(yes / no / 部分压缩)
+Apply the compressed version? (yes / no / partial)
 ```
 
 **When not to output**: if the main market is an English/Latin-script market, skip this suggestion.
 
 ### Suggestion ② · Whether to use the full character limit
 
-**Always output** (regardless of market):
+**Always output** (regardless of market). Translate into the user's conversation language; this English version is the source:
 
 ```markdown
-### 📌 建议 ② · 是否尽量用完字数限额
+### 📌 Suggestion ② · Whether to fill the character limit
 
-当前利用率：
-  · 主标题  X/30 char (X%)
-  · 副标题  X/30 char (X%)
-  · 关键词 X/100 char (X%)
+Current utilization:
+  · Title    X/30 char (X%)
+  · Subtitle X/30 char (X%)
+  · Keywords X/100 char (X%)
 
-可选方案：
-- **A. 保持当前**（精炼，高确信度词组合）
-- **B. Title/Subtitle 也用满** → 我加更多 §10.1 第二梯队长尾词
-- **C. 仅 Keywords 用满 100 char** → 补到 99-100 char
-- **D. 全部用满**（最大覆盖但混入中等 pop 词）
+Options:
+- **A. Keep as is** (tight, high-confidence word set)
+- **B. Fill Title/Subtitle too** → I'll add more §10.1 second-tier long-tail words
+- **C. Fill Keywords only to 100 char** → top up to 99-100 char
+- **D. Fill everything** (max coverage but mixes in mid-pop words)
 
-要哪个？(A / B / C / D)
+Which one? (A / B / C / D)
 ```
 
 **After the user chooses**: re-output the 3 strings per the chosen option; leave the other sections unchanged.
@@ -432,7 +432,9 @@ Steps 2 / 4 / 5 / 7 / 8 are all done by the LLM (Claude in the conversation).
 | §10.1 Tier 1 | rank ≤ 20 AND pop ≥ 40 | §10.1 |
 | §10.1 Tier 3 | pop ≤ 10 must remove | §10.1 |
 
-# Note on Chinese tokenization
+# Note on CJK / Chinese-Japanese-Korean tokenization (parsing CN/JP/KR-store metadata)
+
+This is about tokenizing App Store metadata that is itself in CJK languages — independent of the language you're conversing in with the user.
 
 **Do not use jieba or any automatic tokenizer.** Reasons: jieba boundaries are often wrong (e.g. `便利贴` cut into `便利` + `贴`); long CJK mashed runs produce noise; the LLM has semantic understanding and can recognize complete ASO words. LLM tokenization features: realistic word length (mostly 2-4 chars for Chinese), no long mashed runs, recognizes compound words (`桌面便签` is one ASO word, not `桌面` + `便签`), brand variants (`便笺` ≠ `便签`), typos / homophones.
 
@@ -457,7 +459,7 @@ Steps 2 / 4 / 5 / 7 / 8 are all done by the LLM (Claude in the conversation).
 - [ ] Addition list includes § basis
 - [ ] §10.2 dual-locale audit done
 - [ ] §10.5 long-term weight note attached
-- [ ] **All position references use full names** (主标题/副标题/关键词 or Title/Subtitle/Keywords; **no single-letter T/S/K abbreviations**)
+- [ ] **All position references use full names** (Title/Subtitle/Keywords, or the user's-language equivalent such as 主标题/副标题/关键词; **no single-letter T/S/K abbreviations**)
 - [ ] **No mention of indie reference, `source_apps_count`, `top_category`, or `data/keyword_reference_*` anywhere in the deliverable (§5.0 consultation must stay silent)**
 
 ## Post-delivery suggestions (§8.7 required)

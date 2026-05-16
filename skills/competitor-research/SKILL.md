@@ -19,7 +19,7 @@ If exit code ≠ 0, STOP. Tell the user AppMate credentials are not configured, 
 
 ## One-line summary
 
-Single app → script writes phase_a (raw metadata + primary_genre_id) → **LLM tokenizes keywords** → script fetches iTunes Search top-200 per token, collects rivals outranking self, aggregates, scores, hard-filters by genre+density, writes phase_b → **LLM does batched relevance pass on name + description[:200]** → script writes final JSON, Claude renders Chinese markdown, pastes back into conversation.
+Single app → script writes phase_a (raw metadata + primary_genre_id) → **LLM tokenizes keywords** → script fetches iTunes Search top-200 per token, collects rivals outranking self, aggregates, scores, hard-filters by genre+density, writes phase_b → **LLM does batched relevance pass on name + description[:200]** → script writes final JSON, Claude renders the markdown in the user's conversation language, pastes back into conversation.
 
 ## Difference from existing skills
 
@@ -56,7 +56,7 @@ Writes `data/phase_a_competitors_<slug>.json`. If credentials are missing or app
 Read `data/phase_a_competitors_<slug>.json`. Look at `raw.title`, `raw.subtitle`, `raw.keywords` for the main-market locale.
 
 **Tokenization rules** (identical to `aso-daily-report` Step 2):
-- Cut real ASO words with Chinese semantics.
+- Cut real ASO words using semantic understanding of the source-locale text (Chinese, Japanese, Korean, etc.).
 - Recognize compound words (`桌面便签`, `云便签`).
 - Reject CJK runs ≥ 6 characters (almost always invalid mashed runs).
 - Recognize brand variants, typos, and English-Chinese fusions.
@@ -76,10 +76,10 @@ Read `data/phase_b_competitors_<slug>.json`. For each candidate, look at `name`,
 
 **One batched judgement call.** For ALL candidates in one pass, decide for each:
 
-- `keep: true` + one Chinese sentence reason explaining why the rival's target users overlap with the app's
-- `keep: false` + one Chinese sentence reason explaining why they do not
+- `keep: true` + a one-sentence reason (in the user's conversation language) explaining why the rival's target users overlap with the app's
+- `keep: false` + a one-sentence reason (in the user's conversation language) explaining why they do not
 
-Example reasons:
+Example reasons (when the user is writing Chinese):
 - keep: `「XX便签」描述同样主打桌面快速记事,目标用户重叠`
 - drop: `描述显示是情绪打卡 app,跟便签场景不重叠`
 
@@ -113,71 +113,73 @@ If fewer than 3 candidates pass relevance, the markdown shows an evidence-thin w
 
 ## Markdown report template (v1 — follow exactly)
 
-Rendered in **Chinese** by design.
+**Rendered in the same language the user has been using in this conversation.** Default to English; if the user has been writing in Chinese / Japanese / Spanish / etc., translate the template headers, labels and prose accordingly. App Store metadata strings (title / subtitle / keywords / competitor app names) must remain in the App Store's source locale (e.g. zh-Hans names stay zh-Hans) — only the surrounding explanation follows the user's conversation language.
+
+The template below is written with English placeholders. Substitute the equivalent words in the user's conversation language when rendering.
 
 ```markdown
-# 🎯 <App 名> · 最值得研究的竞品
+# 🎯 <App name> · Top competitors worth studying
 
 > ⚠️ <evidence-thin warning — only when kept < 3>
 
-**主市场**: <flag> <country>  ·  **30 天下载**: <N>  ·  **检索核心词**: <X> 个
+**Main market**: <flag> <country>  ·  **30-day downloads**: <N>  ·  **Core keywords searched**: <X>
 
 ---
 
-## 1. <对手名> · ★<rating> (<review_count> 评)
+## 1. <Rival name> · ★<rating> (<review_count> reviews)
 
-在你 **<outrank_count> 个词**上排名高过你,平均高 **<round avg_rank_diff> 名**
+Outranks you on **<outrank_count> keywords**, on average **<round avg_rank_diff> places** higher
 
-| 关键词 | 你 | 他 | 高你 | 词热度 |
+| Keyword | You | Them | Lead | Popularity |
 |---|:-:|:-:|:-:|:-:|
-| `<kw1>` | <#N 或 未上榜> | **#<n>** | <diff> | <pop> <🔥 if ≥50> |
+| `<kw1>` | <#N or unranked> | **#<n>** | <diff> | <pop> <🔥 if ≥50> |
 | `<kw2>` | ... | ... | ... | ... |
 | `<kw3>` | ... | ... | ... | ... |
 
-> **为什么是他**: <relevance_reason 一句中文>
+> **Why this one**: <relevance_reason — one sentence in the user's conversation language>
 
 ---
 
-## 2. <对手名> · ...
+## 2. <Rival name> · ...
 ... (5–10 rivals total, top 3 keywords each) ...
 
 ---
 
-**重点 <N> 个**: #X / #Y / #Z — <one-sentence summary of each top rival's core threat>
+**Top <N>**: #X / #Y / #Z — <one-sentence summary of each top rival's core threat>
 
-要详细看哪个的关键词布局?告诉我编号,我可以用 /appmate-aso-optimize 拉出他的元数据对照。
+Want a deeper look at one rival's keyword layout? Tell me the number and I can pull their metadata via /appmate-aso-optimize for side-by-side comparison.
 ```
 
 ### Empty-state template (when `len(filtered) == 0`)
 
-When the LLM relevance pass keeps zero candidates, do NOT render the per-rival `##` blocks. Instead, render exactly this:
+When the LLM relevance pass keeps zero candidates, do NOT render the per-rival `##` blocks. Instead, render exactly this (translate headers/labels into the user's conversation language):
 
 ```markdown
-# 🎯 <App 名> · 最值得研究的竞品
+# 🎯 <App name> · Top competitors worth studying
 
-> ⚠️ 没有符合条件的对手 · 当前 app 在自身关键词的 SERP 上没有同类目、且满足 `MIN_OUTRANK_COUNT = 3` 阈值的竞品。
+> ⚠️ No qualifying rivals · this app has no same-category rivals on its own keyword SERPs that meet the `MIN_OUTRANK_COUNT = 3` threshold.
 
-**主市场**: <flag> <country>  ·  **30 天下载**: <N>  ·  **检索核心词**: <X> 个
+**Main market**: <flag> <country>  ·  **30-day downloads**: <N>  ·  **Core keywords searched**: <X>
 
-可能原因(按可能性排序):
+Likely causes (ordered by likelihood):
 
-1. **关键词数量太少**: 至少需要 3 个有效 token 才能让对手通过密度阈值。检查 `phase_a_competitors_<slug>.json` 的 `raw.keywords` 是不是空 / 只有 1-2 个词。
-2. **app 本身就是这个细分赛道的头部**: 没有对手在你 SERP 里高过你 ≥ 3 次。
-3. **类别没对上**: 自己的 `primary_genre_id` 跟所有候选对手都不同——常见于跨类目混排的小众词。
+1. **Too few keywords**: at least 3 valid tokens are required for any rival to pass the density threshold. Check whether `raw.keywords` in `phase_a_competitors_<slug>.json` is empty or has only 1-2 tokens.
+2. **The app is the leader of this niche**: no rival outranks you ≥ 3 times across your own SERP.
+3. **Category mismatch**: your `primary_genre_id` does not match any candidate rival — common for niche keywords with cross-category mixing.
 
-要继续诊断,可以跑 `python3 scripts/competitor_research.py show-b "<app>"` 看 phase_b 的候选池(过滤前的明细)。
+To dig deeper, run `python3 scripts/competitor_research.py show-b "<app>"` to inspect the phase_b candidate pool (the pre-filter detail).
 ```
 
 ## 10 inviolable rules
 
 1. Each rival is its own `H2 (##)` block — low-density layout.
 2. Keywords wrapped in backticks `` `桌面便签` ``.
-3. Column headers are full Chinese words. **Never** use single-letter abbreviations `T/S/K/X`.
-4. "为什么是他" uses a `>` blockquote.
+3. Column headers are full words in the user's conversation language. **Never** use single-letter abbreviations `T/S/K/X`.
+4. The "Why this one" line uses a `>` blockquote (translate the label to the user's conversation language).
 5. The keywords table shows **exactly top 3** outranked keywords per rival — full list is in JSON.
 6. **`dropped_by_relevance` never appears in markdown.** JSON only.
 7. Sort rivals by `threat_score` descending.
-8. Closing "重点 N 个" + "详细看哪个" guidance is required.
+8. Closing "Top N" + "deeper look at one rival" guidance is required (translated to the user's conversation language).
 9. **Paste the full markdown back into the conversation.** "Saved to data/competitors_<slug>.md" alone is not allowed.
 10. **Empty-state**: when `len(filtered) == 0`, render the Empty-state template above (no `##` rival blocks); never invent placeholder rivals.
 
@@ -217,7 +219,7 @@ python3 scripts/competitor_research.py show-b  "Sticky Note Pro"
 ## Connection to existing workflows
 
 - An `aso-daily-report` run that finds an app dropping out of top 20 on its own keyword → trigger this skill to see who took the slot.
-- Use the resulting "重点 N 个" rivals to seed a follow-up `/appmate-aso-optimize <app>` run for keyword reshuffling.
+- Use the resulting "Top N" rivals to seed a follow-up `/appmate-aso-optimize <app>` run for keyword reshuffling.
 - **No downstream skill consumes `competitors_<slug>.json` yet** — wiring `feature-ideation` / `growth-strategy` is a separate task (see spec §15).
 
 ## Known limits
@@ -235,16 +237,16 @@ python3 scripts/competitor_research.py show-b  "Sticky Note Pro"
 - [ ] Sorted by `threat_score` descending
 
 ### Language
-- [ ] Chinese throughout the rendered output
+- [ ] Single-language throughout the rendered output (matches the user's conversation language)
 - [ ] **No** single-letter abbreviations `T/S/K/X`
 - [ ] No technical jargon (no "SERP" / "RAG" / "outrank" in user-visible text)
 - [ ] Keywords wrapped in backticks
 
 ### Structure
-- [ ] Each rival uses `## N. <名>`
-- [ ] "为什么是他" uses `>` blockquote
+- [ ] Each rival uses `## N. <name>`
+- [ ] The "Why this one" label uses `>` blockquote
 - [ ] `dropped_by_relevance` NOT rendered
-- [ ] Closing "重点 N 个" + "详细看哪个" line present
+- [ ] Closing "Top N" + "deeper look at one rival" line present
 
 ### Delivery
 - [ ] `data/competitors_<slug>.json` written

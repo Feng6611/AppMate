@@ -103,7 +103,7 @@ def top_3_by_30d_downloads() -> tuple[list[dict[str, Any]], dt.date]:
     by_day = sr.aggregate_by_day(reports)
     dims = sr.build_dimensions(by_day)
     live = sr.load_live_apps()
-    last30 = next(d for d in dims if d["label"].startswith("前30天"))
+    last30 = next(d for d in dims if d["label"] == "Last 30 days")
     ranked = sorted(
         ((name, m.get("downloads", 0)) for name, m in last30["current_data"].items() if name in live),
         key=lambda kv: -kv[1],
@@ -270,9 +270,9 @@ def _fmt_diff(d: int | None) -> str:
 
 def render(results: list[dict[str, Any]], data_today: dt.date) -> str:
     lines: list[str] = []
-    lines.append("# 🎯 ASO 日报")
+    lines.append("# 🎯 ASO Daily Report")
     lines.append("")
-    lines.append(f"**昨天 ({data_today:%m-%d}) 数据 · 排名 = App Store 网页搜索 · 热度/难度 = 内部指标**")
+    lines.append(f"**Yesterday ({data_today:%m-%d}) data · Rank = App Store web search · Popularity/difficulty = internal metric**")
     lines.append("")
     lines.append("---")
     lines.append("")
@@ -283,17 +283,17 @@ def render(results: list[dict[str, Any]], data_today: dt.date) -> str:
 
         lines.append(f"## {idx}. {R['name']}  ·  {plat_label}  ·  {flag} {R['country']}")
         lines.append("")
-        lines.append(f"昨日下载 **{R['downloads_yesterday']:,}**  ·  目标词 **{len(R['target_words'])}** 个（排名 ≤ {TARGET_RANK_CEILING}，从 {R['total_candidates']} 个候选中筛出）")
+        lines.append(f"Downloads yesterday **{R['downloads_yesterday']:,}**  ·  target keywords **{len(R['target_words'])}** (rank ≤ {TARGET_RANK_CEILING}, filtered from {R['total_candidates']} candidates)")
         if not R["is_localized"]:
             lines.append("")
-            lines.append(f"> ⚠️ 该 app 没有 {R['country']} 对应语言族的本地化")
+            lines.append(f"> ⚠️ This app has no localization for the {R['country']} language family")
         lines.append("")
 
         if not R["target_words"]:
-            lines.append("> 暂无排名 ≤ 20 的目标词。")
+            lines.append("> No target keywords with rank ≤ 20.")
             lines.append("")
         else:
-            lines.append("| 关键词 | 排名 | Δ | 热度 | 难度 |")
+            lines.append("| Keyword | Rank | Δ | Popularity | Difficulty |")
             lines.append("|---|:-:|:-:|:-:|:-:|")
             for row in R["target_words"]:
                 kw_disp = row["keyword"].replace("|", "\\|")

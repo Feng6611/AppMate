@@ -19,7 +19,7 @@ If exit code ≠ 0, STOP. Do not invoke any other part of this skill, do not run
 
 ## One-line summary
 
-Take the top-3 apps by download volume → find each one's main market → **LLM semantic tokenization** → query iTunes Search for rankings → rank ≤ 20 enters the "target keyword group" → popularity & difficulty come from the static keyword reference → compare against yesterday's snapshot → markdown report.
+Take the top-3 apps by download volume → find each one's main market → **LLM semantic tokenization** (handles CJK / Chinese-Japanese-Korean App Store metadata when the target market uses those scripts) → query iTunes Search for rankings → rank ≤ 20 enters the "target keyword group" → popularity & difficulty come from the static keyword reference → compare against yesterday's snapshot → markdown report.
 
 ## Difference from the `aso-optimize` skill
 
@@ -45,7 +45,7 @@ Take the top-3 apps by download volume → find each one's main market → **LLM
 ## Workflow (3 stages)
 
 1. **Step 1: get the top-3 + each one's current state (script)** — descending by 30-day downloads; skip not-live / DEVELOPER_REJECTED; for each app: find the single largest market, pick the locale, extract raw title/subtitle/keywords. Output an intermediate JSON (the raw metadata of the 3 apps).
-2. **Step 2: LLM tokenization (you, conversation layer)** — read each app's raw metadata; cut real ASO words with Chinese semantics; reject long CJK mashed runs (≥ 6 chars are usually invalid); output a token list per app.
+2. **Step 2: LLM tokenization (you, conversation layer)** — read each app's raw metadata; cut real ASO words using CJK / Chinese-Japanese-Korean tokenization when the App Store metadata is in those languages; reject long CJK mashed runs (≥ 6 chars are usually invalid); output a token list per app.
 3. **Step 3: validate + render (script + LLM)** — script: each token → iTunes rank + popularity + difficulty; write today's snapshot to `data/aso_rank_snapshots.json`; compare against yesterday's snapshot to compute the delta; filter to rank ≤ 20 = target words; LLM renders per the report template.
 
 ## User intervention points (2)
@@ -57,12 +57,12 @@ Overall experience: **trigger → you run it all yourself → give the user the 
 
 ## Report template (v1 — follow exactly)
 
-The rendered report is in **Chinese** by design. Do not translate the rendered output.
+**Rendered in the same language the user has been using in this conversation.** Default to English; if the user has been writing in Chinese / Japanese / Spanish / etc., translate the template headers, labels and prose accordingly. The keyword strings inside the table cells (the actual App Store metadata being analyzed) stay in their App Store locale form (e.g. zh-Hans tokens stay as zh-Hans) regardless of conversation language — only the surrounding column headers and prose follow the user's conversation language.
 
 ### Top one-liner (required)
 
 ```
-**昨天 ({MM-DD}) 数据 · 排名 = App Store 网页搜索 · 热度/难度 = 内部指标**
+**Yesterday ({MM-DD}) data · Rank = App Store web search · Popularity/difficulty = internal metric**
 ```
 
 ### Per-app block (top 3 by 30-day downloads)
@@ -70,11 +70,11 @@ The rendered report is in **Chinese** by design. Do not translate the rendered o
 ```markdown
 ## {idx}. {app_name}  ·  {platform}  ·  {flag} {country}
 
-昨日下载 **{N}**  ·  目标词 **{X}** 个（排名 ≤ 20，从 {Y} 个候选中筛出）
+Downloads yesterday **{N}**  ·  target keywords **{X}** (rank ≤ 20, filtered from {Y} candidates)
 
-> ⚠️ 若没有该 country 对应语言族的本地化，提示一行
+> ⚠️ If the app has no localization for that country's language family, print a one-line warning
 
-| 关键词 | 排名 | Δ | 热度 | 难度 |
+| Keyword | Rank | Δ | Popularity | Difficulty |
 |---|:-:|:-:|:-:|:-:|
 | `keyword` | **#N** | ↑3 | **88** 🔥 | 44 🟢 |
 | ... | ... | ↓1 | ... | ... |
@@ -84,7 +84,7 @@ Sorting: **descending by popularity**, ties by ascending rank.
 
 ## 8 inviolable rules
 
-1. Top one-liner only (`昨天(MM-DD) 数据 …`), do not stack metadata rows.
+1. Top one-liner only (`Yesterday (MM-DD) data …`), do not stack metadata rows.
 2. Each app uses `H2 (##)`, **single-market focus**, do not show multiple markets.
 3. **Do not** show source tags (T/S/K/X), **do not** add a suggestions column, **do not** show competitor counts.
 4. **Must** show the delta (even if it is all `—` on day one).
@@ -109,6 +109,8 @@ Sorting: **descending by popularity**, ties by ascending rank.
 | Δ vs yesterday | `data/aso_rank_snapshots.json` comparing today's/yesterday's snapshot |
 
 ## Why not regex / jieba tokenization
+
+These notes are about parsing CJK App Store metadata (e.g. zh-Hans / ja / ko), not about the rendered output language.
 
 | Approach | Problem |
 |---|---|
