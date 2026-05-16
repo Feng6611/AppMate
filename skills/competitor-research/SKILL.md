@@ -148,7 +148,27 @@ Rendered in **Chinese** by design.
 要详细看哪个的关键词布局?告诉我编号,我可以用 /appmate-aso-optimize 拉出他的元数据对照。
 ```
 
-## 9 inviolable rules
+### Empty-state template (when `len(filtered) == 0`)
+
+When the LLM relevance pass keeps zero candidates, do NOT render the per-rival `##` blocks. Instead, render exactly this:
+
+```markdown
+# 🎯 <App 名> · 最值得研究的竞品
+
+> ⚠️ 没有符合条件的对手 · 当前 app 在自身关键词的 SERP 上没有同类目、且满足 `MIN_OUTRANK_COUNT = 3` 阈值的竞品。
+
+**主市场**: <flag> <country>  ·  **30 天下载**: <N>  ·  **检索核心词**: <X> 个
+
+可能原因(按可能性排序):
+
+1. **关键词数量太少**: 至少需要 3 个有效 token 才能让对手通过密度阈值。检查 `phase_a_competitors_<slug>.json` 的 `raw.keywords` 是不是空 / 只有 1-2 个词。
+2. **app 本身就是这个细分赛道的头部**: 没有对手在你 SERP 里高过你 ≥ 3 次。
+3. **类别没对上**: 自己的 `primary_genre_id` 跟所有候选对手都不同——常见于跨类目混排的小众词。
+
+要继续诊断,可以跑 `python3 scripts/competitor_research.py show-b "<app>"` 看 phase_b 的候选池(过滤前的明细)。
+```
+
+## 10 inviolable rules
 
 1. Each rival is its own `H2 (##)` block — low-density layout.
 2. Keywords wrapped in backticks `` `桌面便签` ``.
@@ -159,6 +179,7 @@ Rendered in **Chinese** by design.
 7. Sort rivals by `threat_score` descending.
 8. Closing "重点 N 个" + "详细看哪个" guidance is required.
 9. **Paste the full markdown back into the conversation.** "Saved to data/competitors_<slug>.md" alone is not allowed.
+10. **Empty-state**: when `len(filtered) == 0`, render the Empty-state template above (no `##` rival blocks); never invent placeholder rivals.
 
 ## Data source conventions
 
