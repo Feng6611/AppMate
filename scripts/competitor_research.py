@@ -25,6 +25,7 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import appmate_config  # noqa: E402
+from keyword_local import lookup_popularity as _kw_lookup_popularity  # noqa: E402
 
 # --- Network / SERP ---
 SERP_LIMIT = 200
@@ -409,3 +410,95 @@ def filter_by_genre_and_density(
             and r.get("outrank_count", 0) >= MIN_OUTRANK_COUNT]
     keep.sort(key=lambda r: r.get("threat_score", 0), reverse=True)
     return keep[:MAX_CANDIDATES_BEFORE_LLM]
+
+
+def _lookup_popularity(keyword: str, region: str) -> int:
+    """Tiny wrapper so tests can monkeypatch a single symbol.
+
+    keyword_local.lookup_popularity returns a dict shaped like
+        {"keyword", "store", "popularity", "difficulty", ...}
+    We extract the integer popularity (1-99). On any failure, return 1
+    (neutral weight) so scoring continues — popularity 1 means a contribution
+    of just `diff` per outranked keyword, which is small but not zero.
+    """
+    try:
+        row = _kw_lookup_popularity(keyword, region)
+        if not isinstance(row, dict):
+            return 1
+        pop = row.get("popularity")
+        return int(pop) if pop is not None else 1
+    except Exception:  # noqa: BLE001
+        return 1
+
+
+def build_phase_b(phase_a: dict[str, Any], tokens: list[str]) -> dict[str, Any]:
+    self_bundle = phase_a.get("bundle_id", "")
+    country = phase_a.get("market", "US")
+    region = country.lower()
+    self_genre_id = int(phase_a.get("primary_genre_id") or 0)
+
+    self_ranks: dict[str, int | None] = {}
+    per_token: dict[str, dict[str, Any]] = {}
+    for tok in tokens:
+        serp = rank_keyword_with_details(tok, country=country)
+        bundle_view = collect_outrankers_for_token(serp, self_bundle_id=self_bundle)
+        self_ranks[tok] = bundle_view["self_rank"]
+        per_token[tok] = {
+            "self_rank": bundle_view["self_rank"],
+            "outrankers": bundle_view["outrankers"],
+            "popularity": _lookup_popularity(tok, region),
+        }
+
+    rivals = aggregate_rivals(per_token)
+    candidates = filter_by_genre_and_density(rivals, self_genre_id=self_genre_id)
+
+    return {
+        "app": phase_a.get("app", ""),
+        "app_id": phase_a.get("app_id", ""),
+        "bundle_id": self_bundle,
+        "market": country,
+        "primary_genre_id": self_genre_id,
+        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "tokens": tokens,
+        "self_ranks": self_ranks,
+        "candidates": candidates,
+    }
+
+
+def cmd_rank(query: str, tokens: list[str]) -> int:
+    appmate_config.require_credentials_or_exit()
+    # Locate phase_a by scanning OUTPUT_DIR for phase_a_competitors_*.json
+    # whose `app` matches the query (or itunes_id / bundle).
+    phase_a = _load_phase_a_for_query(query)
+    if phase_a is None:
+        print(f"ERROR: no phase_a file for '{query}'. "
+              f"Run analyze first.", file=sys.stderr)
+        return 2
+    if not tokens:
+        print("ERROR: no tokens provided. Pass --tokens 'a,b,c'", file=sys.stderr)
+        return 2
+    phase_b = build_phase_b(phase_a, tokens)
+    out_path = _phase_path("b", phase_b["app"], phase_b["market"])
+    _write_json(out_path, phase_b)
+    print(f"wrote {out_path}")
+    return 0
+
+
+def _load_phase_a_for_query(query: str) -> dict[str, Any] | None:
+    """Find the most recent phase_a whose app name or id/bundle matches query."""
+    candidates = sorted(OUTPUT_DIR.glob("phase_a_competitors_*.json"),
+                        key=lambda p: p.stat().st_mtime, reverse=True)
+    q = query.lower()
+    for path in candidates:
+        try:
+            data = json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        if q in (str(data.get("app", "")).lower(),
+                 str(data.get("app_id", "")).lower(),
+                 str(data.get("bundle_id", "")).lower()):
+            return data
+        # also accept fuzzy match (substring of name)
+        if q in str(data.get("app", "")).lower():
+            return data
+    return None

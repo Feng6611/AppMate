@@ -426,3 +426,101 @@ def test_filter_sorts_by_threat_desc_and_truncates_to_max_candidates():
     assert threats == sorted(threats, reverse=True)
     # The top should be itunes_id "30" (highest threat)
     assert out[0]["itunes_id"] == "30"
+
+
+def test_build_phase_b_happy_path(monkeypatch):
+    import competitor_research as cr
+
+    phase_a = {
+        "app": "Demo", "app_id": "111", "bundle_id": "com.self",
+        "market": "CN", "primary_genre_id": 6007,
+        "generated_at": "2026-05-16T00:00:00Z",
+    }
+    tokens = ["便签", "桌面便签", "记事本"]
+
+    serps = {
+        "便签": [
+            _serp_entry(10, "com.rivalA", "Rival A", rank=1, genre=6007),
+            _serp_entry(11, "com.rivalB", "Rival B", rank=2, genre=6007),
+            _serp_entry(99, "com.self",   "Self",   rank=10, genre=6007),
+            _serp_entry(12, "com.gameX",  "GameX",  rank=3, genre=6014),  # cross-genre
+        ],
+        "桌面便签": [
+            _serp_entry(10, "com.rivalA", "Rival A", rank=1, genre=6007),
+            _serp_entry(11, "com.rivalB", "Rival B", rank=3, genre=6007),
+            _serp_entry(13, "com.rivalC", "Rival C", rank=5, genre=6007),
+            # self not present
+        ],
+        "记事本": [
+            _serp_entry(10, "com.rivalA", "Rival A", rank=2, genre=6007),
+            _serp_entry(11, "com.rivalB", "Rival B", rank=4, genre=6007),
+            _serp_entry(99, "com.self",   "Self",   rank=8, genre=6007),
+        ],
+    }
+    monkeypatch.setattr(cr, "rank_keyword_with_details",
+                        lambda k, country, entity="software": serps[k])
+    monkeypatch.setattr(cr, "_lookup_popularity",
+                        lambda kw, region: 50)
+
+    out = cr.build_phase_b(phase_a, tokens)
+    assert set(out.keys()) == {
+        "app", "app_id", "bundle_id", "market", "primary_genre_id",
+        "generated_at", "tokens", "self_ranks", "candidates",
+    }
+    assert out["tokens"] == tokens
+    assert out["self_ranks"] == {"便签": 10, "桌面便签": None, "记事本": 8}
+    cand_by_id = {c["itunes_id"]: c for c in out["candidates"]}
+    # Rival A outranks self on both tokens (rank 1 < 10, rank 1 < 200)
+    assert "10" in cand_by_id
+    # Rival B outranks self on both (rank 2 < 10, rank 3 < 200)
+    assert "11" in cand_by_id
+    # Rival C only outranks on 桌面便签 (count=1, below MIN_OUTRANK_COUNT=3) -> dropped
+    assert "13" not in cand_by_id
+    # GameX is cross-genre -> dropped
+    assert "12" not in cand_by_id
+
+
+def test_build_phase_b_empty_when_no_rivals_pass_filters(monkeypatch):
+    """Spec §13 edge case: an app whose SERPs yield no qualifying rivals.
+    Result is an empty candidates list — Claude will render the
+    'evidence-thin' warning. The script does not crash."""
+    import competitor_research as cr
+    phase_a = {
+        "app": "Lonely", "app_id": "111", "bundle_id": "com.lonely",
+        "market": "US", "primary_genre_id": 6007,
+        "generated_at": "2026-05-16T00:00:00Z",
+    }
+    monkeypatch.setattr(cr, "rank_keyword_with_details",
+                        lambda k, country, entity="software": [])
+    monkeypatch.setattr(cr, "_lookup_popularity", lambda kw, region: 50)
+    out = cr.build_phase_b(phase_a, tokens=["a", "b"])
+    assert out["candidates"] == []
+    assert out["self_ranks"] == {"a": None, "b": None}
+
+
+def test_cmd_rank_writes_phase_b(monkeypatch, tmp_path):
+    import competitor_research as cr
+
+    phase_a_path = tmp_path / "phase_a_competitors_demo_us.json"
+    phase_a_path.write_text(json.dumps({
+        "app": "Demo", "app_id": "111", "bundle_id": "com.self",
+        "market": "US", "primary_genre_id": 6007,
+        "generated_at": "2026-05-16T00:00:00Z",
+    }))
+    monkeypatch.setattr(cr, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(cr, "rank_keyword_with_details",
+                        lambda k, country, entity="software": [
+                            _serp_entry(10, "com.r", "R", rank=1, genre=6007),
+                            _serp_entry(99, "com.self", "Self", rank=20, genre=6007),
+                        ])
+    monkeypatch.setattr(cr, "_lookup_popularity", lambda kw, region: 50)
+
+    rc = cr.cmd_rank("Demo", tokens=["a", "b", "c"])
+    assert rc == 0
+    out = tmp_path / "phase_b_competitors_demo_us.json"
+    assert out.exists()
+    data = json.loads(out.read_text())
+    assert data["tokens"] == ["a", "b", "c"]
+    assert len(data["candidates"]) == 1
+    assert data["candidates"][0]["itunes_id"] == "10"
+    assert data["candidates"][0]["outrank_count"] == 3
