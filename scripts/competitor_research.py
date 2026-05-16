@@ -107,3 +107,156 @@ def fetch_primary_genre_id(itunes_id: str, country: str) -> int:
             last_exc = e
             time.sleep(0.5 * (2 ** attempt))
     raise RuntimeError(f"iTunes Lookup failed after {SERP_RETRIES} retries: {last_exc}")
+
+
+from aso_optimize_v2 import find_app, slugify  # noqa: E402
+from feature_ideate import pick_primary_market  # noqa: E402
+# count_downloads_in_window is NOT exposed by feature_ideate (the counting
+# logic is inline inside pick_primary_market). We define it locally below.
+
+
+def _is_install_ptid(ptid: str) -> bool:
+    """Same install/IAP/update filter used by feature_ideate.pick_primary_market."""
+    if not ptid:
+        return False
+    if ptid.startswith("IA") or ptid.startswith("ITA"):
+        return False  # IAP
+    if ptid.startswith("7"):
+        return False  # update
+    return True
+
+
+def count_downloads_in_window(
+    sales_cache: dict[str, list[dict[str, str]]],
+    app_id: str,
+    country: str,
+    today: dt.date,
+    window_days: int = 30,
+) -> int:
+    """Sum installs (excluding IAPs and updates) for one app in one country
+    over the trailing `window_days`. Pure function; mirrors the install filter
+    used by feature_ideate.pick_primary_market for consistency."""
+    cutoff = today - dt.timedelta(days=window_days)
+    total = 0
+    for date_str, rows in (sales_cache or {}).items():
+        if not isinstance(rows, list):
+            continue
+        try:
+            day = dt.date.fromisoformat(date_str)
+        except ValueError:
+            continue
+        if day < cutoff or day > today:
+            continue
+        for r in rows:
+            if str(r.get("Apple Identifier")) != str(app_id):
+                continue
+            if r.get("Country Code") != country:
+                continue
+            if not _is_install_ptid(r.get("Product Type Identifier", "")):
+                continue
+            try:
+                total += int(r.get("Units", 0) or 0)
+            except (TypeError, ValueError):
+                pass
+    return total
+
+
+def _pick_locale_block(app: dict[str, Any], locale: str) -> dict[str, Any]:
+    """Find the localization dict for the chosen locale, with sensible fallbacks."""
+    app_info_locs = (app.get("appInfo") or {}).get("localizations") or []
+    versions = app.get("versions") or []
+    ver_locs = versions[0].get("localizations", []) if versions else []
+
+    name_block = next(
+        (loc for loc in app_info_locs if loc.get("locale") == locale),
+        app_info_locs[0] if app_info_locs else {},
+    )
+    kw_block = next(
+        (loc for loc in ver_locs if loc.get("locale") == locale),
+        ver_locs[0] if ver_locs else {},
+    )
+    return {
+        "title": name_block.get("name", "") or "",
+        "subtitle": name_block.get("subtitle", "") or "",
+        "keywords": kw_block.get("keywords", "") or "",
+    }
+
+
+def _platform_of(app: dict[str, Any]) -> str:
+    versions = app.get("versions") or []
+    return versions[0].get("attributes", {}).get("platform", "IOS") if versions else "IOS"
+
+
+def _country_to_locale(country: str, app: dict[str, Any]) -> str:
+    """Pick a locale string. Prefer the app's primaryLocale; otherwise the first
+    locale that exists in appInfo.localizations; final fallback 'en-US'."""
+    primary = (app.get("core") or {}).get("primaryLocale") or ""
+    if primary:
+        return primary
+    locs = (app.get("appInfo") or {}).get("localizations") or []
+    if locs:
+        return locs[0].get("locale", "en-US")
+    return "en-US"
+
+
+def build_phase_a(app: dict[str, Any], sales_cache: dict[str, Any],
+                  today: dt.date | None = None) -> dict[str, Any]:
+    today = today or dt.date.today()
+    market = pick_primary_market(app, sales_cache, today=today)
+    locale = _country_to_locale(market, app)
+    raw = _pick_locale_block(app, locale)
+    downloads = count_downloads_in_window(
+        sales_cache, app_id=str(app.get("id", "")), country=market,
+        today=today, window_days=30,
+    )
+    itunes_id = str(app.get("id", ""))
+    genre_id = fetch_primary_genre_id(itunes_id, market)
+    return {
+        "app": (app.get("core") or {}).get("name", ""),
+        "app_id": itunes_id,
+        "bundle_id": (app.get("core") or {}).get("bundleId", ""),
+        "platform": _platform_of(app),
+        "market": market,
+        "primary_genre_id": genre_id,
+        "locale": locale,
+        "downloads_30d_in_market": downloads,
+        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "raw": raw,
+    }
+
+
+def _phase_path(prefix: str, app_name: str, country: str) -> pathlib.Path:
+    slug = slugify(app_name, country)
+    return OUTPUT_DIR / f"phase_{prefix}_competitors_{slug}.json"
+
+
+def _final_path(app_name: str, country: str) -> pathlib.Path:
+    slug = slugify(app_name, country)
+    return OUTPUT_DIR / f"competitors_{slug}.json"
+
+
+def _write_json(path: pathlib.Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+def cmd_analyze(query: str) -> int:
+    appmate_config.require_credentials_or_exit()
+    if not APPS_FULL_PATH.exists():
+        print(f"ERROR: {APPS_FULL_PATH} not found. Run /appmate-setup first.",
+              file=sys.stderr)
+        return 2
+    apps_data = json.loads(APPS_FULL_PATH.read_text())
+    apps = apps_data.get("apps") if isinstance(apps_data, dict) else apps_data
+    app = find_app(query, apps)
+    if app is None:
+        print(f"ERROR: app not found for query '{query}'", file=sys.stderr)
+        return 2
+
+    sales_cache = (json.loads(SALES_CACHE_PATH.read_text())
+                   if SALES_CACHE_PATH.exists() else {})
+    phase_a = build_phase_a(app, sales_cache)
+    out = _phase_path("a", phase_a["app"], phase_a["market"])
+    _write_json(out, phase_a)
+    print(f"wrote {out}")
+    return 0
