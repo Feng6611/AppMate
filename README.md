@@ -17,7 +17,7 @@ Inside Claude Code, run:
 
 That's the whole install. The plugin pulls itself from GitHub, registers the seven `/appmate-*` slash commands, and loads the seven skills.
 
-Then install the Python data-layer dependencies (App Store Connect API client uses PyJWT + cryptography):
+Then install the Python data-layer dependencies (App Store Connect API client uses PyJWT + cryptography + requests):
 
 ```bash
 # in the plugin repo directory that Claude Code cloned for you
@@ -145,7 +145,7 @@ See `docs/ASC_API_REFERENCE.md` for the full endpoint reference.
 commands/         7 /appmate-* slash commands
 skills/           7 skills (English process docs; aso-optimize ships
                   a 671-line methodology reference in references/)
-scripts/          14 Python scripts (data layer + entry points) + appmate_config.py
+scripts/          15 Python scripts (data layer + entry points) + appmate_config.py
 config/           gitignored — credentials + .p8 keys (ships only the example + README)
 data/             gitignored except for the two keyword_reference tables
 docs/             ASC API reference + design specs / plans
