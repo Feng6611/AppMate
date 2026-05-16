@@ -3,12 +3,14 @@ name: growth-strategy
 description: Generate a stage-diagnosed growth strategy for an app — a phase diagnosis plus 3-5 actionable strategies. Use when the user wants a growth plan, growth strategy, or "跑增长策略" for a specific app.
 ---
 
-# Growth Strategy Workflow v1
+# Growth Strategy Workflow v2
 
 > This skill is the single authoritative reference for the growth strategy flow. Re-read it before every run.
-> v1: stage-diagnosis-driven + a static methodology cheat-sheet.
+> v2: dropped the AppMate RAG dependency. Competitors now come from the `/appmate-competitors` output (auto-chained when missing), unifying the competitive signal with `feature-ideation`. v1 had been the "RAG top-8 by seed word" design.
 
-## Step 0 — Prerequisites (credentials must be configured)
+## Step 0 — Prerequisites
+
+### 0.1 Credentials gate
 
 Every step in this skill calls App Store Connect APIs. **Before any other step**, run:
 
@@ -17,6 +19,21 @@ python3 scripts/appmate_config.py check
 ```
 
 If exit code ≠ 0, STOP. Do not invoke any other part of this skill, do not run `scripts/growth_strategy.py`. Tell the user AppMate credentials are not configured, show the precheck output verbatim, and tell them to run `/appmate-setup`. The downstream script also enforces this gate (exits 2 with the same message).
+
+### 0.2 Competitor data: auto-chain `/appmate-competitors` if missing
+
+This workflow consumes `data/competitors_<slug>.json`, the final artifact produced by the `competitor-research` skill (i.e. `/appmate-competitors <app>`). Both skills compute slug via `slugify(canonical_app_name, market)`, so passing the same app argument to both guarantees the slug matches.
+
+**Decision rule — before invoking `growth_strategy.py`:**
+
+1. Resolve the canonical app + market for `<app>` (read `data/apps_full.json`, call `find_app(<arg>)` → name, then pick main market via the largest 30-day downloads in `sales_cache.json` with the same fallbacks the script uses — primaryLocale, then US). Compute `expected = data/competitors_<slugify(name, market)>.json`.
+2. Check whether `expected` exists.
+3. **If it does not exist**, invoke the `competitor-research` skill end-to-end for the same `<app>` argument first — all three stages: Stage 1 script `analyze`, Stage 2 LLM tokenization, Stage 3 LLM relevance pass + final-JSON + markdown write. Paste the rivals markdown back into the conversation per that skill's own rules. Then return here and proceed to Step 1 of growth-strategy. The user gets two reports out of one ask: rivals first, then the growth plan. That is intentional — both are useful, and the rivals card is the same competitive evidence the LLM will read in Step 2.
+4. **If it exists**, proceed directly. Optionally check `competitors_generated_at`; if it is > 30 days old, mention staleness when delivering the final growth report (do **not** auto-refresh unless the user asks).
+
+**No RAG fallback. No placeholder competitors.** The only two paths are: the cached file, or a fresh `/appmate-competitors` run.
+
+**Safety net**: `growth_strategy.py` exits 2 with `competitors JSON not found` if the file is missing at script-execution time. This catches the case where the script was invoked outside the skill (cron, manual CLI). When it fires, treat it the same way — invoke `/appmate-competitors` for the same app, then re-run.
 
 ## One-line summary
 
@@ -37,13 +54,13 @@ Given a live app → the script aggregates **sales trend + ASO state + reviews +
 | Item | Content |
 |---|---|
 | **Trigger** | the user says "run growth strategy for `<app>`" |
-| **Input** | `data/apps_full.json` (reviews/locale) + `data/sales_cache.json` (sales) + `data/aso_rank_snapshots.json` (ASO state) + AppMate RAG (competitors) + **the "methodology cheat-sheet" section of this skill** |
+| **Input** | `data/apps_full.json` (reviews/locale) + `data/sales_cache.json` (sales) + `data/aso_rank_snapshots.json` (ASO state) + **`data/competitors_<slug>.json`** (from `/appmate-competitors` — auto-chained on first run for an app, then cached) + **the "methodology cheat-sheet" section of this skill** |
 | **Output** | `data/phase_a_growth_<slug>.json` (intermediate) + `data/growth_strategy_<slug>.md` (final) + **Claude pastes the full markdown back into the conversation** |
 | **Intervention points** | 2 (trigger + receive); optional follow-up "detail one strategy" |
 
 ## Workflow overview (3 steps)
 
-1. **Step 1 · Script pre-aggregation (`growth_strategy.py`)** — app fuzzy match (reuses `aso_optimize_v2`) → sales trend (D30 / prior D30 / slope) → stage detection (4-stage rule) → ASO state extraction (locale / main-market ranking) → review-signal summary (rating distribution / negative feedback / wishlist) → AppMate RAG pulls the top 8 similar competitors → `data/phase_a_growth_<slug>.json`.
+1. **Step 1 · Script pre-aggregation (`growth_strategy.py`)** — app fuzzy match (reuses `aso_optimize_v2`) → sales trend (D30 / prior D30 / slope) → stage detection (4-stage rule) → ASO state extraction (locale / main-market ranking) → review-signal summary (rating distribution / negative feedback / wishlist) → load competitors from `data/competitors_<slug>.json` (Claude should have already auto-chained `/appmate-competitors` per §0.2 if the file was missing; script exits 2 as a safety net otherwise) → `data/phase_a_growth_<slug>.json`.
 2. **Step 2 · Methodology match + strategy generation (Claude, conversation layer)** — read `stage` from the phase_a JSON → read the 3-5 playbook items for that stage from the cheat-sheet below → use own data + competitor evidence + methodology to brainstorm 8-12 candidate strategies → anti-junk filter → internal ranking → take the top 3-5 → expand each into 4 executable steps.
 3. **Step 3 · Render + deliver (Claude)** — top "stage diagnosis" section (one paragraph + key numbers) → 3-5 strategies, 4 steps each → save `data/growth_strategy_<slug>.md` → **paste the full markdown back into the conversation**.
 
@@ -80,12 +97,17 @@ From `data/apps_full.json` + `data/aso_rank_snapshots.json`: `current_locales`, 
 
 > The bucketing helpers (`bucket_reviews`, `_has_wish_trigger`, etc.) live inline in `growth_strategy.py` — they used to be imported from `feature_ideate.py`, but feature_ideate v3 dropped pre-bucketing and the helpers were moved here.
 
-## 1f. Competitor fetch (AppMate RAG)
+## 1f. Competitor loader (no RAG)
 
-- **Query (seed)**: longest ASCII alpha word from any locale name, then `core.name`, fallback `"app"`. The picker (`pick_competitor_seed`) lives inline in `growth_strategy.py` — same logic that used to live in `feature_ideate.py` 1c before v3.
-- **Call**: `appmate_rag_client.search(query=seed, region=main_market, top_k=8, min_review_count=50, sort_by="S")`
-- **Extract**: per competitor `{name, rating, review_count, description, appmate_reason}`
-- ⚠️ `appmate_*` internal scores are for LLM reasoning reference only — not shown to the end user.
+`load_competitors(app_name, market)` reads `OUTPUT_DIR / f"competitors_{slugify(app_name, market)}.json"`. The file is the final artifact of `/appmate-competitors` (see `skills/competitor-research/SKILL.md`). Per §0.2, Claude should ensure this file exists *before* invoking the script — by auto-chaining `/appmate-competitors` when it's missing.
+
+| Step | Behavior |
+|---|---|
+| File missing | return `None` → `build_phase_a` returns `None` → `main()` prints a safety-net message pointing at `/appmate-competitors` and exits 2. Normally never fires when the skill flow was followed; fires if the script was invoked directly. |
+| File present | read `payload["filtered"]` (already top-10 by `threat_score`, already passed the LLM relevance pass) and copy these fields per entry: `name`, `description_short`, `outranked_keywords`, `relevance_reason`, `threat_score`, `rating`, `review_count` |
+| Stale data | the script does **not** check `generated_at` freshness; it surfaces the timestamp in phase_a so the LLM can flag staleness in the report if it looks old (> 30 days) |
+
+> **v1 → v2 change**: v1 called `appmate_rag_client.search(query=seed, region=market, top_k=8, ...)` directly with a seed-word the script picked from the app's name. The seed-extraction was fragile (compound brand names lost context, English-only `"app"` fallback returned useless rivals) and the RAG result was a different shape than the SERP-overlap rivals produced by `/appmate-competitors`. v2 reuses the already-curated, already-LLM-filtered result of `/appmate-competitors`, so growth-strategy and feature-ideation produce a coherent picture of the same competitive landscape.
 
 ## 1g. phase_a JSON shape
 
@@ -98,7 +120,12 @@ From `data/apps_full.json` + `data/aso_rank_snapshots.json`: `current_locales`, 
   "stage_evidence": ["D30=850 (上月 420 → 本月 850)", "slope=2.02 → 环比涨 102%", "评价总数 145，已过冷启动门槛"],
   "aso": {"current_locales": ["en-US", "zh-Hans"], "primary_market_top10_keywords": 6, "missing_locales_in_top_markets": ["es-MX", "pt-BR"]},
   "reviews": {"total": 145, "rating_avg": 4.3, "negative_count_90d": 8, "wishlist_count_90d": 5, "top_negative_themes": ["同步丢失", "缺图片插入"]},
-  "competitors": [{"name":"...", "rating":4.7, "review_count":12340, "description":"...", "appmate_reason":"..."}]
+  "competitors_source": "<absolute path to competitors_<slug>.json>",
+  "competitors_generated_at": "<timestamp from competitors_<slug>.json>",
+  "competitors": [
+    {"name": "...", "description_short": "...", "outranked_keywords": ["..."],
+     "relevance_reason": "...", "threat_score": 42, "rating": 4.7, "review_count": 1234}
+  ]
 }
 ```
 
@@ -286,7 +313,7 @@ The output template and rendered example are in **Chinese** by design — do not
 
 | Direction | Content |
 |---|---|
-| **Upstream dependency** | `data/apps_full.json` / `data/sales_cache.json` / `data/aso_rank_snapshots.json` / `scripts/appmate_rag_client.py` |
+| **Upstream auto-chain** | `data/apps_full.json` / `data/sales_cache.json` / `data/aso_rank_snapshots.json` + **`data/competitors_<slug>.json`**. When the competitors file is missing, this skill first invokes `/appmate-competitors <app>` end-to-end (rivals markdown gets pasted back as a side effect), then continues. |
 | **Side-chain trigger** | the `aso-daily-report` skill finds an app's keyword dropping out of the top 20 → trigger this flow for a "why did it drop / how to fix" analysis |
 | **Cross-workflow reference** | decline-stage strategies may say "run the `aso-optimize` skill once"; early growth may say "run the `feature-ideation` skill once to find an expansion feature" |
 | **Methodology maintenance** | when a new growth tactic is worth solidifying → manually update the matching stage of this skill's cheat-sheet |
@@ -313,7 +340,7 @@ python3 scripts/growth_strategy.py "<app>"
 - Apple's sales data lags 1-2 days → the slope is computed from the DATA_TODAY anchor, not the real today.
 - Stage-detection thresholds (100 / 0.8 / 1.2 / 20) are empirical; for very small or very large download volumes they may misjudge.
 - The methodology cheat-sheet is maintained as a static document — it does not auto-sync; human inspection is needed.
-- AppMate RAG is a public BETA — competitor-traction inference can be biased.
+- The competitor list reflects whenever `/appmate-competitors` was last run for this app — staleness shows up in `competitors_generated_at`; if it's > 30 days old, suggest re-running the prereq before trusting the report.
 - The composite score is subjective; running the same app multiple times varies ±20% (run twice and take the union for key decisions).
 - The 4 stages are discrete; a transitional app (slope = 0.85 or 1.15) may fall into the wrong camp — the LLM should manually note "in an X / Y transition".
 

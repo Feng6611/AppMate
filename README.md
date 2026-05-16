@@ -80,12 +80,9 @@ python3 scripts/asc_client.py token | head -c 30 && echo "..."
 
 # 2. ASC API live call — should list your account's apps
 python3 -c "import sys; sys.path.insert(0,'scripts'); from asc_client import apps; print(f'{len(apps())} apps')"
-
-# 3. AppMate RAG (public BETA) — should return {"status":"ok"}
-python3 scripts/appmate_rag_client.py health
 ```
 
-All four green = every workflow can run.
+All three green = every workflow can run.
 
 > **What's gitignored**: everything under `config/` (your credentials + .p8 key) and most of `data/` (caches + generated reports). The two static `data/keyword_reference_<region>.json` tables that ship with the plugin are the only exceptions. To keep `config/` and `data/` outside the plugin directory, set `APPMATE_HOME` to a folder you control.
 
@@ -127,7 +124,7 @@ All reports are rendered as **Chinese markdown** by design (the formatting conve
 | Source | Provides | Setup |
 |---|---|---|
 | **Apple App Store Connect API** | Metadata / sales & download reports / IAP & subscriptions / reviews / builds | Required — the four credentials above |
-| **AppMate RAG API** (remote HTTPS) | App Store competitor semantic search + AppMate S score | None — public BETA, no key needed |
+| **iTunes Search API** (public, no key) | Genre classification + per-keyword SERP rankings, consumed by `/appmate-aso-daily` and `/appmate-competitors` | None |
 | **Static keyword reference** | Keyword popularity (1-99) + difficulty (1-99) + apps_count | Ships with the plugin — `data/keyword_reference_<region>.json` |
 
 Current static reference coverage:
@@ -137,7 +134,7 @@ Current static reference coverage:
 | CN | 2417 | 1025 |
 | US | 2093 | 1485 |
 
-See `docs/ASC_API_REFERENCE.md` and `docs/APPMATE_RAG_API.md` for the full endpoint references.
+See `docs/ASC_API_REFERENCE.md` for the full endpoint reference.
 
 ---
 
@@ -148,11 +145,11 @@ See `docs/ASC_API_REFERENCE.md` and `docs/APPMATE_RAG_API.md` for the full endpo
 commands/         7 /appmate-* slash commands
 skills/           7 skills (English process docs; aso-optimize ships
                   a 671-line methodology reference in references/)
-scripts/          15 Python scripts (data layer + entry points) + appmate_config.py
+scripts/          14 Python scripts (data layer + entry points) + appmate_config.py
 config/           gitignored — credentials + .p8 keys (ships only the example + README)
 data/             gitignored except for the two keyword_reference tables
-docs/             ASC API reference + AppMate RAG reference + design specs / plans
-tests/            pytest suite (157 cases, runs in <0.5s)
+docs/             ASC API reference + design specs / plans
+tests/            pytest suite (159 cases, runs in <0.5s)
 ```
 
 ---

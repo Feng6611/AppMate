@@ -11,7 +11,8 @@ Pipeline:
       missing_locales_in_top_markets
   1e. Reviews summary: rating_avg / negative_count_90d / wishlist_count_90d /
       top_negative_themes
-  1f. Competitors via AppMate RAG (top_k=8)
+  1f. Competitors loaded from data/competitors_<slug>.json (produced by
+      /appmate-competitors; auto-chained by the skill if missing)
   1g. phase_a JSON output
 """
 from __future__ import annotations
@@ -26,8 +27,6 @@ from typing import Any
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import re  # noqa: E402
-
 import appmate_config  # noqa: E402
 from aso_optimize_v2 import find_app, slugify  # noqa: E402
 from feature_ideate import (  # noqa: E402
@@ -35,13 +34,11 @@ from feature_ideate import (  # noqa: E402
     _is_install_ptid,
 )
 
-# --- Review bucketing + competitor-seed picker --------------------------
+# --- Review bucketing helpers ------------------------------------------
 #
-# These two helpers used to live in feature_ideate v2 and were imported here.
-# feature_ideate v3 removed both (its review pre-aggregation is now raw, and
-# its competitors come from /appmate-competitors instead of AppMate RAG).
-# Growth still wants the bucket counts (for stage signals) and a RAG seed,
-# so the helpers are inlined here as growth-private utilities.
+# These used to live in feature_ideate v2 and were imported here. v3 removed
+# them (its review pre-aggregation is now raw). Growth still wants bucket
+# counts for stage signals, so the helpers are inlined here.
 
 _REVIEW_AGE_DAYS = 90
 _REVIEW_BUCKET_CAP = 50
@@ -113,31 +110,7 @@ def bucket_reviews(
     }
 
 
-def pick_competitor_seed(app: dict[str, Any]) -> str:
-    """Longest ASCII alpha word from any locale name → core.name → 'app'."""
-    candidates: list[str] = []
-    locs = (app.get("appInfo") or {}).get("localizations") or []
-    for loc in locs:
-        n = loc.get("name") or ""
-        if n:
-            candidates.append(n)
-    core_name = (app.get("core") or {}).get("name") or ""
-    if core_name:
-        candidates.append(core_name)
-
-    best_word = ""
-    for name in candidates:
-        for m in re.finditer(r"[A-Za-z]{3,}", name):
-            w = m.group(0)
-            if len(w) > len(best_word):
-                best_word = w
-    return best_word or "app"
-
-
 # --- Constants (workflow §1c / §1d / §1e / §1f) ------------------------
-COMPETITOR_TOP_K = 8
-COMPETITOR_MIN_REVIEWS = 50
-
 STAGE_COLD_REVIEWS_THRESHOLD = 20
 STAGE_COLD_D30_THRESHOLD = 100
 STAGE_DECLINE_SLOPE = 0.8
@@ -398,34 +371,41 @@ def summarize_reviews(
     }
 
 
-# --- Competitors via AppMate RAG ---------------------------------------
+# --- Competitors loader (from /appmate-competitors) --------------------
 
-# Wrapper so tests can monkeypatch.
-def _rag_search(**kwargs: Any) -> list[dict[str, Any]]:
-    from appmate_rag_client import search as _search
-    return _search(**kwargs)
+# Fields copied per entry from competitors_<slug>.json :: filtered[].
+# Same slim shape feature_ideate v3 uses, so both workflows feed the LLM the
+# same competitive signal.
+COMPETITOR_FIELDS = (
+    "name", "description_short", "outranked_keywords",
+    "relevance_reason", "threat_score", "rating", "review_count",
+)
 
 
-COMPETITOR_FIELDS = ("name", "rating", "review_count", "description", "appmate_reason")
+def load_competitors(
+    app_name: str,
+    market: str,
+    data_dir: pathlib.Path | None = None,
+) -> dict[str, Any] | None:
+    """Load data/competitors_<slug>.json produced by /appmate-competitors.
 
-
-def fetch_competitors(seed: str, country: str) -> list[dict[str, Any]]:
-    """Top-N competitors for a seed via AppMate RAG.
-
-    On any RAG exception returns []. Downstream LLM degrades gracefully
-    (reviews + ASO snapshot still drive the strategy).
+    Returns a dict with `source_path`, `generated_at`, `entries` — OR None
+    if the file is missing. The caller treats `None` as a hard error and
+    tells the user to run /appmate-competitors first.
     """
-    try:
-        rows = _rag_search(
-            query=seed,
-            region=country.lower(),
-            top_k=COMPETITOR_TOP_K,
-            min_review_count=COMPETITOR_MIN_REVIEWS,
-            sort_by="S",
-        )
-    except Exception:
-        return []
-    return [{k: r.get(k) for k in COMPETITOR_FIELDS} for r in (rows or [])]
+    d = data_dir if data_dir is not None else OUTPUT_DIR
+    slug = slugify(app_name, market)
+    path = d / f"competitors_{slug}.json"
+    if not path.exists():
+        return None
+    payload = json.loads(path.read_text())
+    filtered = payload.get("filtered") or []
+    entries = [{k: c.get(k) for k in COMPETITOR_FIELDS} for c in filtered]
+    return {
+        "source_path": str(path),
+        "generated_at": payload.get("generated_at") or "",
+        "entries": entries,
+    }
 
 
 # --- Top-level pipeline ------------------------------------------------
@@ -435,14 +415,25 @@ def build_phase_a(
     sales_cache: dict[str, list[dict[str, str]]],
     snapshots: dict[str, Any] | None = None,
     today: dt.date | None = None,
-) -> dict[str, Any]:
-    """Step 1 pipeline end-to-end. Returns the phase_a dict per workflow §1g."""
+    data_dir: pathlib.Path | None = None,
+) -> dict[str, Any] | None:
+    """Step 1 pipeline end-to-end.
+
+    Returns the phase_a dict per workflow §1g, or None if
+    data/competitors_<slug>.json is missing (caller prints a helpful
+    message and exits 2).
+    """
     today = today or dt.date.today()
     snapshots = snapshots or {}
 
     bid = (app.get("core") or {}).get("bundleId") or ""
     app_id = str(app.get("id") or "")
+    app_name = (app.get("core") or {}).get("name") or ""
     market = pick_primary_market(app, sales_cache, today=today)
+
+    competitors_block = load_competitors(app_name, market, data_dir=data_dir)
+    if competitors_block is None:
+        return None
 
     sales = compute_sales_trend(app_id, sales_cache, market, today)
 
@@ -453,11 +444,8 @@ def build_phase_a(
 
     aso = extract_aso_state(app, snapshots, sales_cache, market, today)
 
-    seed = pick_competitor_seed(app)
-    competitors = fetch_competitors(seed, country=market)
-
     return {
-        "app": (app.get("core") or {}).get("name") or "",
+        "app": app_name,
         "app_id": app_id,
         "bundle_id": bid,
         "market": market,
@@ -467,8 +455,9 @@ def build_phase_a(
         "stage_evidence": stage_evidence,
         "aso": aso,
         "reviews": reviews_summary,
-        "competitor_seed": seed,
-        "competitors": competitors,
+        "competitors_source": competitors_block["source_path"],
+        "competitors_generated_at": competitors_block["generated_at"],
+        "competitors": competitors_block["entries"],
     }
 
 
@@ -505,6 +494,17 @@ def main(argv: list[str] | None = None) -> int:
     snapshots = _load_json(ASO_SNAPSHOTS_PATH) or {}
 
     phase_a = build_phase_a(app, sales_cache, snapshots)
+    if phase_a is None:
+        app_name = (app.get("core") or {}).get("name") or ""
+        market = pick_primary_market(app, sales_cache)
+        expected = OUTPUT_DIR / f"competitors_{slugify(app_name, market)}.json"
+        print(
+            f"[growth-strategy] ERROR: competitors JSON not found at {expected}\n"
+            f"Run /appmate-competitors \"{args.app}\" first, then re-run this command.",
+            file=sys.stderr,
+        )
+        return 2
+
     slug = slugify(phase_a["app"], phase_a["market"])
     out = OUTPUT_DIR / f"phase_a_growth_{slug}.json"
     out.write_text(json.dumps(phase_a, ensure_ascii=False, indent=2))

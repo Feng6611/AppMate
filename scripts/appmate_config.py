@@ -89,10 +89,6 @@ def asc_private_key_path() -> pathlib.Path:
     return p if p.is_absolute() else APPMATE_HOME / p
 
 
-def rag_base_url() -> str:
-    return _load_config().get("rag_base_url") or "https://appmate.000ooo.ooo"
-
-
 # --- Pre-flight credential check ------------------------------------------
 def credential_status() -> dict[str, str]:
     """Return per-key status. Values are one of:

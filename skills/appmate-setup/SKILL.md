@@ -9,16 +9,15 @@ description: Set up or troubleshoot AppMate plugin credentials and config. Use w
 
 ## One-line summary
 
-Install two external data-source credentials into a gitignored `config/` folder, then call them through the Python clients in `scripts/`. Keyword popularity / difficulty come from the static reference table shipped with the plugin (`data/keyword_reference_<region>.json`) — no extra setup.
+Install App Store Connect API credentials into a gitignored `config/` folder, then call them through `scripts/asc_client.py`. Keyword popularity / difficulty come from the static reference table shipped with the plugin (`data/keyword_reference_<region>.json`) — no extra setup. Competitor data is produced locally by `/appmate-competitors` (iTunes Search SERP overlap, no remote service).
 
-## The 2 data sources
+## The data source
 
-| # | Data source | Provides | Credential file | Client | Status |
-|---|---|---|---|---|---|
-| 1 | **Apple App Store Connect API** | Metadata / sales & download reports / IAP & subscriptions / reviews / builds | `config/credentials.txt` + a `.p8` key in `config/` | `scripts/asc_client.py` | Primary |
-| 2 | **AppMate RAG API** (remote HTTPS) | App Store competitor semantic search + AppMate S score | none (public BETA) | `scripts/appmate_rag_client.py` | Optional |
+| # | Data source | Provides | Credential file | Client |
+|---|---|---|---|---|
+| 1 | **Apple App Store Connect API** | Metadata / sales & download reports / IAP & subscriptions / reviews / builds | `config/credentials.txt` + a `.p8` key in `config/` | `scripts/asc_client.py` |
 
-> Note: **SoloMax RAG MCP has been removed** from this project. Growth methodology was distilled offline into the `growth-strategy` skill's static "methodology cheat-sheet".
+> Note: **SoloMax RAG MCP and AppMate RAG API have both been removed** from this project. Growth methodology was distilled offline into the `growth-strategy` skill's static "methodology cheat-sheet"; competitor evidence now comes from `/appmate-competitors` (iTunes Search SERP overlap, run locally).
 
 ## ⚠ API key role selection (read this BEFORE generating the key)
 
@@ -80,7 +79,6 @@ All secrets and account-specific constants live in a **gitignored `config/` dire
    - `issuer_id`, `key_id` — from App Store Connect → Users and Access → Integrations → App Store Connect API
    - `private_key_path` — path to your `.p8` key; drop the `.p8` file into `config/` and use a repo-relative path like `config/AuthKey_XXXXXXXX.p8`
    - `vendor_number` — from App Store Connect → Payments and Financial Reports
-   - `rag_base_url` — optional; default is filled in if omitted
 4. Place the `.p8` private key file inside `config/` (it is gitignored).
 5. Install Python dependencies: `pip install -r requirements.txt`
 
@@ -94,7 +92,7 @@ All secrets and account-specific constants live in a **gitignored `config/` dire
 
 See `docs/ASC_API_REFERENCE.md` for the full endpoint reference.
 
-## Self-check (4 checks — all green means the plugin is ready)
+## Self-check (3 checks — all green means the plugin is ready)
 
 Run from the plugin repo root:
 
@@ -111,16 +109,13 @@ python3 scripts/asc_client.py token | head -c 30 && echo "..."
 
 # 2. ASC API live call — should list the account's apps
 python3 -c "import sys; sys.path.insert(0,'scripts'); from asc_client import apps; print(f'{len(apps())} apps')"
-
-# 3. AppMate RAG — should return {"status":"ok"}
-python3 scripts/appmate_rag_client.py health
 ```
 
 Check 0 is the **universal gate**: every downstream workflow script (`sales_report.py`, `aso_daily.py`, `aso_optimize_v2.py`, `growth_strategy.py`, `feature_ideate.py`) calls `key_safety.require_safe_key_or_exit()` at the top of `main()`, which combines the offline credential check and the role probe. Each `/appmate-*` command also runs this check before invoking its skill.
 
 If check 0 reports the key as **UNSAFE**, stop immediately: revoke the key in App Store Connect, generate a new one with only read-only roles (Sales / Access to Reports / Customer Support / Marketing), replace the `.p8` + `key_id`, delete `data/key_safety.json`, and re-run check 0. AppMate will not run a single workflow while an unsafe key is configured.
 
-All 4 green = every downstream workflow (`sales-daily-report`, `aso-daily-report`, `aso-optimize`, `feature-ideation`, `growth-strategy`) can run.
+All 3 green = every downstream workflow (`sales-daily-report`, `aso-daily-report`, `aso-optimize`, `feature-ideation`, `competitor-research`, `growth-strategy`) can run.
 
 ## Config file inventory (paths relative to the plugin repo root)
 

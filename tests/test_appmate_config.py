@@ -52,11 +52,6 @@ def test_load_config_parses_and_skips_comments(monkeypatch, tmp_path):
     assert parsed == {"issuer_id": "abc", "vendor_number": "123"}
 
 
-def test_url_accessors_have_defaults(monkeypatch, tmp_path):
-    cfg = _fresh(monkeypatch, tmp_path)
-    assert cfg.rag_base_url() == "https://appmate.000ooo.ooo"
-
-
 def test_require_raises_pointing_to_setup(monkeypatch, tmp_path):
     cfg = _fresh(monkeypatch, tmp_path)
     try:

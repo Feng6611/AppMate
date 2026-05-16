@@ -25,10 +25,10 @@ Single app → script writes phase_a (raw metadata + primary_genre_id) → **LLM
 
 | | `competitor-research` (this skill) | `feature-ideation` / `growth-strategy` |
 |---|---|---|
-| Signal | iTunes Search SERP overlap, strict outrank | AppMate RAG semantic similarity |
-| Output role | the deliverable itself | transient input evidence |
-| Persistence | `data/competitors_<slug>.json` | not cached |
-| RAG dependency | **none** | required |
+| Role | produces the competitive signal | consumes it |
+| Signal | iTunes Search SERP overlap, strict outrank | reuses this skill's `data/competitors_<slug>.json` (auto-chains this skill when the file is missing) |
+| Output role | the deliverable itself | transient input evidence in their phase_a JSONs |
+| Persistence | `data/competitors_<slug>.json` (cached, reused) | not cached |
 
 ## Input / Output / Trigger
 

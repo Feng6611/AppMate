@@ -1,15 +1,14 @@
 # App Store Connect API Reference
 
-Reference material for the data sources AppMate calls. For the step-by-step credential setup, use the `appmate-setup` skill (or the `/appmate-setup` command) instead.
+Reference material for the data source AppMate calls. For the step-by-step credential setup, use the `appmate-setup` skill (or the `/appmate-setup` command) instead.
 
-AppMate uses two external data sources, called through Python clients in `scripts/`:
+AppMate uses one credentialed data source, called through a Python client in `scripts/`:
 
 | # | Data source | Provides | Client |
 |---|---|---|---|
 | 1 | Apple App Store Connect API | Metadata / sales & download reports / IAP & subscriptions / reviews / builds | `scripts/asc_client.py` |
-| 2 | AppMate RAG API (remote HTTPS) | App Store competitor semantic search + AppMate S score | `scripts/appmate_rag_client.py` |
 
-Keyword popularity (1-99) and difficulty (1-99) come from a static reference table shipped with the plugin (`data/keyword_reference_<region>.json`), looked up via `scripts/keyword_local.py`.
+The public iTunes Search API (no credential needed) supplies genre lookups and per-keyword SERP rankings for `/appmate-aso-daily` and `/appmate-competitors`. Keyword popularity (1-99) and difficulty (1-99) come from a static reference table shipped with the plugin (`data/keyword_reference_<region>.json`), looked up via `scripts/keyword_local.py`. Competitor evidence consumed by `/appmate-feature-ideas` and `/appmate-growth` is produced locally by `/appmate-competitors` from iTunes Search SERP overlap — no remote ranking service is involved.
 
 ---
 
@@ -53,27 +52,3 @@ GET  /v1/financeReports                    finance monthly report
 | `apps_metadata.json` | Lightweight version (no reviews) | `scripts/fetch_metadata.py` |
 | `app_icons.json` | Icon URLs from the iTunes Lookup API | `scripts/fetch_icons.py` |
 | `sales_cache.json` | Daily sales report cache (TSV rows keyed by date) | `scripts/sales_report.py` (auto-maintained) |
-
----
-
-## 2. AppMate RAG API
-
-See `docs/APPMATE_RAG_API.md` for the full endpoint and schema reference. In short:
-
-- Base URL: `https://appmate.000ooo.ooo` (override via `rag_base_url` in `config/credentials.txt`).
-- Endpoints: `GET /api/health`, `POST /api/rag/search`.
-- `scripts/appmate_rag_client.py` exposes `health()` and `search(query, region=..., top_k=..., min_review_count=..., sort_by=...)`.
-
-```python
-from appmate_rag_client import search
-
-results = search(
-    query="sticky note widget",
-    region="us",
-    top_k=10,
-    min_review_count=50,
-    sort_by="S",
-)
-```
-
-> ⚠️ `appmate_*` fields in the response are internal scores — do not display them directly to end users.

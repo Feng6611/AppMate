@@ -31,6 +31,45 @@ def _review(rating, body, days_ago, title="", territory="USA"):
     }
 
 
+def _competitors_payload(generated_at="2026-05-01T00:00:00+00:00", filtered=None):
+    default_filtered = [
+        {
+            "itunes_id": "555",
+            "bundle_id": "com.other",
+            "name": "Rival",
+            "primary_genre_id": 6007,
+            "rating": 4.7,
+            "review_count": 9000,
+            "description_short": "Rival app description",
+            "outranked_keywords": ["note", "memo"],
+            "outrank_count": 5,
+            "avg_rank_diff": 15.0,
+            "threat_score": 42,
+            "relevance_keep": True,
+            "relevance_reason": "overlapping target users",
+        }
+    ]
+    return {
+        "app": "Demo",
+        "app_id": "111",
+        "bundle_id": "com.demo",
+        "market": "US",
+        "primary_genre_id": 6007,
+        "generated_at": generated_at,
+        "tokens": ["note", "memo"],
+        "self_ranks": {"note": 12},
+        "filtered": filtered if filtered is not None else default_filtered,
+        "dropped_by_relevance": [],
+    }
+
+
+def _write_competitors_json(out_dir, slug, payload=None):
+    payload = payload if payload is not None else _competitors_payload()
+    p = pathlib.Path(out_dir) / f"competitors_{slug}.json"
+    p.write_text(json.dumps(payload, ensure_ascii=False))
+    return p
+
+
 def test_module_imports():
     import growth_strategy  # noqa: F401
 
@@ -230,46 +269,47 @@ def test_summarize_reviews_handles_empty():
     assert s["top_negative_themes"] == []
 
 
-# --- fetch_competitors -------------------------------------------------
+# --- load_competitors --------------------------------------------------
 
-def test_fetch_competitors_uses_top_k_8(monkeypatch):
-    import growth_strategy as gs
-    captured = {}
+def test_load_competitors_returns_slim_filtered_list(tmp_path):
+    from growth_strategy import COMPETITOR_FIELDS, load_competitors, slugify
 
-    def fake_search(**kwargs):
-        captured.update(kwargs)
-        return [{
-            "name": "X", "rating": 4.5, "review_count": 100,
-            "description": "d", "appmate_reason": "r", "extra_field": "drop me",
-        }]
-
-    monkeypatch.setattr(gs, "_rag_search", fake_search)
-    out = gs.fetch_competitors("seed", country="CN")
-    assert captured == {
-        "query": "seed",
-        "region": "cn",
-        "top_k": 8,
-        "min_review_count": 50,
-        "sort_by": "S",
-    }
-    assert len(out) == 1
-    assert set(out[0].keys()) == {"name", "rating", "review_count", "description", "appmate_reason"}
+    slug = slugify("Demo", "US")
+    _write_competitors_json(tmp_path, slug)
+    out = load_competitors("Demo", "US", data_dir=tmp_path)
+    assert out is not None
+    assert out["generated_at"] == "2026-05-01T00:00:00+00:00"
+    assert len(out["entries"]) == 1
+    entry = out["entries"][0]
+    assert set(entry.keys()) == set(COMPETITOR_FIELDS)
+    assert entry["name"] == "Rival"
+    assert entry["relevance_reason"] == "overlapping target users"
+    # raw phase_b internals must not leak through
+    assert "itunes_id" not in entry
+    assert "bundle_id" not in entry
+    assert "outrank_count" not in entry
 
 
-def test_fetch_competitors_returns_empty_on_exception(monkeypatch):
-    import growth_strategy as gs
+def test_load_competitors_returns_none_when_file_missing(tmp_path):
+    from growth_strategy import load_competitors
 
-    def boom(**kwargs):
-        raise RuntimeError("network down")
+    assert load_competitors("Demo", "US", data_dir=tmp_path) is None
 
-    monkeypatch.setattr(gs, "_rag_search", boom)
-    assert gs.fetch_competitors("seed", "CN") == []
+
+def test_load_competitors_handles_empty_filtered_list(tmp_path):
+    from growth_strategy import load_competitors, slugify
+
+    slug = slugify("Demo", "US")
+    _write_competitors_json(tmp_path, slug, _competitors_payload(filtered=[]))
+    out = load_competitors("Demo", "US", data_dir=tmp_path)
+    assert out is not None
+    assert out["entries"] == []
 
 
 # --- build_phase_a -----------------------------------------------------
 
-def test_build_phase_a_full_schema(monkeypatch):
-    import growth_strategy as gs
+def test_build_phase_a_full_schema(tmp_path):
+    from growth_strategy import build_phase_a, slugify
     app = {
         "id": "111",
         "core": {"name": "Demo", "bundleId": "com.demo", "primaryLocale": "en-US"},
@@ -281,33 +321,54 @@ def test_build_phase_a_full_schema(monkeypatch):
     }
     cache = {"2026-05-10": [_row("111", "US", units="50")]}
     snaps = {"2026-05-13": {"com.demo": {"US": {"demo": 5, "app": 12}}}}
+    slug = slugify("Demo", "US")
+    _write_competitors_json(tmp_path, slug)
 
-    monkeypatch.setattr(gs, "_rag_search", lambda **kw: [])
-    out = gs.build_phase_a(app, cache, snaps, today=dt.date(2026, 5, 13))
+    out = build_phase_a(app, cache, snaps, today=dt.date(2026, 5, 13), data_dir=tmp_path)
 
     expected_keys = {
         "app", "app_id", "bundle_id", "market", "generated_at",
         "sales", "stage", "stage_evidence", "aso", "reviews",
-        "competitor_seed", "competitors",
+        "competitors_source", "competitors_generated_at", "competitors",
     }
     assert set(out.keys()) == expected_keys
+    # v1 (pre-decoupling) keys must be gone
+    assert "competitor_seed" not in out
+
     assert out["bundle_id"] == "com.demo"
     assert out["market"] == "US"
     assert "D30" in out["sales"]
     assert out["stage"] in {"冷启动", "衰退", "早期增长", "平台期"}
     assert out["aso"]["primary_market_top10_keywords"] == 1  # demo=5, app=12 → only demo
+    assert out["competitors_generated_at"] == "2026-05-01T00:00:00+00:00"
+    assert out["competitors"][0]["name"] == "Rival"
+    assert "competitors_" in out["competitors_source"]
 
 
-def test_build_phase_a_cold_start_with_zero_reviews(monkeypatch):
-    import growth_strategy as gs
+def test_build_phase_a_returns_none_when_competitors_missing(tmp_path):
+    from growth_strategy import build_phase_a
     app = {
         "id": "111",
         "core": {"name": "Demo", "bundleId": "com.demo", "primaryLocale": "en-US"},
         "appInfo": {"localizations": []},
         "reviews": {"count": 0, "averageRating": 0, "reviews": []},
     }
-    monkeypatch.setattr(gs, "_rag_search", lambda **kw: [])
-    out = gs.build_phase_a(app, {}, {}, today=dt.date(2026, 5, 13))
+    out = build_phase_a(app, {}, {}, today=dt.date(2026, 5, 13), data_dir=tmp_path)
+    assert out is None
+
+
+def test_build_phase_a_cold_start_with_zero_reviews(tmp_path):
+    from growth_strategy import build_phase_a, slugify
+    app = {
+        "id": "111",
+        "core": {"name": "Demo", "bundleId": "com.demo", "primaryLocale": "en-US"},
+        "appInfo": {"localizations": []},
+        "reviews": {"count": 0, "averageRating": 0, "reviews": []},
+    }
+    slug = slugify("Demo", "US")
+    _write_competitors_json(tmp_path, slug)
+    out = build_phase_a(app, {}, {}, today=dt.date(2026, 5, 13), data_dir=tmp_path)
+    assert out is not None
     assert out["stage"] == "冷启动"
     assert out["sales"]["D30"] == 0
 
@@ -327,11 +388,12 @@ def test_main_writes_phase_a_file(monkeypatch, tmp_path):
     }]}))
     sales.write_text("{}")
     snaps.write_text("{}")
+    slug = gs.slugify("Demo", "US")
+    _write_competitors_json(tmp_path, slug)
     monkeypatch.setattr(gs, "APPS_FULL_PATH", apps_full)
     monkeypatch.setattr(gs, "SALES_CACHE_PATH", sales)
     monkeypatch.setattr(gs, "ASO_SNAPSHOTS_PATH", snaps)
     monkeypatch.setattr(gs, "OUTPUT_DIR", tmp_path)
-    monkeypatch.setattr(gs, "_rag_search", lambda **kw: [])
 
     rc = gs.main(["Demo"])
     assert rc == 0
@@ -340,6 +402,34 @@ def test_main_writes_phase_a_file(monkeypatch, tmp_path):
     data = json.loads(expected.read_text())
     assert data["bundle_id"] == "com.demo"
     assert data["stage"] == "冷启动"
+    assert "competitor_seed" not in data
+    assert "competitors_source" in data
+
+
+def test_main_exits_2_when_competitors_json_missing(monkeypatch, tmp_path, capsys):
+    """No competitors_<slug>.json → exit 2 + clear message pointing at /appmate-competitors."""
+    import growth_strategy as gs
+    apps_full = tmp_path / "apps_full.json"
+    sales = tmp_path / "sales_cache.json"
+    snaps = tmp_path / "snaps.json"
+    apps_full.write_text(json.dumps({"apps": [{
+        "id": "111",
+        "core": {"name": "Demo", "bundleId": "com.demo", "primaryLocale": "en-US"},
+        "appInfo": {"localizations": []},
+        "reviews": {"count": 0, "averageRating": 0, "reviews": []},
+    }]}))
+    sales.write_text("{}")
+    snaps.write_text("{}")
+    monkeypatch.setattr(gs, "APPS_FULL_PATH", apps_full)
+    monkeypatch.setattr(gs, "SALES_CACHE_PATH", sales)
+    monkeypatch.setattr(gs, "ASO_SNAPSHOTS_PATH", snaps)
+    monkeypatch.setattr(gs, "OUTPUT_DIR", tmp_path)
+
+    rc = gs.main(["Demo"])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "competitors JSON not found" in err
+    assert "/appmate-competitors" in err
 
 
 def test_main_returns_nonzero_when_app_not_found(monkeypatch, tmp_path):

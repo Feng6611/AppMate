@@ -1,5 +1,5 @@
 ---
-description: Set up or troubleshoot AppMate credentials and config (App Store Connect API, AppMate RAG).
+description: Set up or troubleshoot AppMate credentials and config (App Store Connect API).
 ---
 
 Run the AppMate setup walkthrough. Invoke the `appmate-setup` skill and follow it end-to-end.
