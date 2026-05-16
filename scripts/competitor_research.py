@@ -54,3 +54,56 @@ SALES_CACHE_PATH = appmate_config.DATA_DIR / "sales_cache.json"
 ITUNES_LOOKUP_CACHE_PATH = appmate_config.DATA_DIR / "itunes_lookup_cache.json"
 SERP_DETAILS_CACHE_PATH = appmate_config.DATA_DIR / "serp_details_cache.json"
 OUTPUT_DIR = appmate_config.DATA_DIR
+
+ITUNES_LOOKUP_URL = "https://itunes.apple.com/lookup"
+
+
+def _load_json_cache(path: pathlib.Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_json_cache(path: pathlib.Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+def fetch_primary_genre_id(itunes_id: str, country: str) -> int:
+    """Return the app's primaryGenreId from iTunes Lookup, cached forever.
+
+    Raises RuntimeError if Lookup returns no result (app pulled / wrong id).
+    """
+    cache = _load_json_cache(ITUNES_LOOKUP_CACHE_PATH)
+    key = f"{itunes_id}|{country.lower()}"
+    if key in cache and "primaryGenreId" in cache[key]:
+        return int(cache[key]["primaryGenreId"])
+
+    params = {"id": str(itunes_id), "country": country.upper()}
+    last_exc: Exception | None = None
+    for attempt in range(SERP_RETRIES):
+        try:
+            r = requests.get(ITUNES_LOOKUP_URL, params=params, timeout=SERP_TIMEOUT_S)
+            if r.status_code in (429, 502, 503, 504):
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            r.raise_for_status()
+            results = r.json().get("results", [])
+            if not results:
+                raise RuntimeError(
+                    f"iTunes Lookup returned no result for id={itunes_id} country={country}"
+                )
+            genre_id = int(results[0]["primaryGenreId"])
+            cache[key] = {
+                "primaryGenreId": genre_id,
+                "fetched_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+            }
+            _save_json_cache(ITUNES_LOOKUP_CACHE_PATH, cache)
+            return genre_id
+        except (requests.ConnectionError, requests.Timeout) as e:
+            last_exc = e
+            time.sleep(0.5 * (2 ** attempt))
+    raise RuntimeError(f"iTunes Lookup failed after {SERP_RETRIES} retries: {last_exc}")
