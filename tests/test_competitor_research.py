@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import pathlib
+import statistics
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "scripts"))
@@ -270,3 +271,97 @@ def test_rank_keyword_with_details_persists_cache(tmp_path, monkeypatch):
     on_disk = json.loads(cache_path.read_text())
     assert "software|cn|便签" in on_disk
     assert on_disk["software|cn|便签"]["entries"][0]["itunes_id"] == "100"
+
+
+def _serp_entry(tid, bid, name, rank, genre=6007, rating=4.0, rcount=100, desc="d"):
+    return {
+        "itunes_id": str(tid), "bundle_id": bid, "name": name,
+        "primary_genre_id": genre, "rating": rating, "review_count": rcount,
+        "description": desc, "rank_in_serp": rank,
+    }
+
+
+def test_collect_outrankers_when_self_ranked():
+    import competitor_research as cr
+    serp = [
+        _serp_entry(10, "com.rivalA", "Rival A", rank=1),
+        _serp_entry(11, "com.rivalB", "Rival B", rank=2),
+        _serp_entry(99, "com.self",   "Self",   rank=5),
+        _serp_entry(12, "com.below",  "Below",  rank=6),
+    ]
+    out = cr.collect_outrankers_for_token(serp, self_bundle_id="com.self")
+    assert out["self_rank"] == 5
+    assert {r["bundle_id"] for r in out["outrankers"]} == {"com.rivalA", "com.rivalB"}
+
+
+def test_collect_outrankers_when_self_unranked():
+    import competitor_research as cr
+    serp = [
+        _serp_entry(10, "com.a", "A", rank=1),
+        _serp_entry(11, "com.b", "B", rank=2),
+    ]
+    out = cr.collect_outrankers_for_token(serp, self_bundle_id="com.missing")
+    assert out["self_rank"] is None
+    assert len(out["outrankers"]) == 2  # both higher than ceiling 200
+
+
+def test_collect_outrankers_returns_empty_for_empty_serp():
+    import competitor_research as cr
+    out = cr.collect_outrankers_for_token([], self_bundle_id="com.self")
+    assert out == {"self_rank": None, "outrankers": []}
+
+
+def test_aggregate_rivals_combines_across_tokens():
+    import competitor_research as cr
+
+    per_token = {
+        "便签": {
+            "self_rank": 10,
+            "outrankers": [
+                _serp_entry(100, "com.a", "App A", rank=3),
+                _serp_entry(101, "com.b", "App B", rank=5),
+            ],
+            "popularity": 80,
+        },
+        "桌面便签": {
+            "self_rank": None,  # self unranked -> ceiling 200
+            "outrankers": [
+                _serp_entry(100, "com.a", "App A", rank=2),
+            ],
+            "popularity": 60,
+        },
+    }
+
+    rivals = cr.aggregate_rivals(per_token)
+    by_id = {r["itunes_id"]: r for r in rivals}
+
+    a = by_id["100"]
+    assert a["name"] == "App A"
+    assert a["outrank_count"] == 2
+    assert sorted([k["keyword"] for k in a["outranked_keywords"]]) == ["便签", "桌面便签"]
+    # 便签: self=10, rival=3, diff=7, pop=80
+    # 桌面便签: self=200, rival=2, diff=198, pop=60
+    assert a["threat_score"] == 80 * 7 + 60 * 198
+    # avg diff = (7 + 198) / 2
+    assert a["avg_rank_diff"] == statistics.mean([7, 198])
+
+    b = by_id["101"]
+    assert b["outrank_count"] == 1
+    assert b["outranked_keywords"][0]["self_rank"] == 10
+    assert b["outranked_keywords"][0]["rival_rank"] == 5
+
+
+def test_aggregate_rivals_truncates_description_to_200_chars():
+    import competitor_research as cr
+    long_desc = "x" * 500
+    per_token = {
+        "k": {
+            "self_rank": 10,
+            "outrankers": [
+                _serp_entry(100, "com.a", "App A", rank=3, desc=long_desc),
+            ],
+            "popularity": 50,
+        }
+    }
+    rivals = cr.aggregate_rivals(per_token)
+    assert len(rivals[0]["description_short"]) == 200

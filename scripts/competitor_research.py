@@ -321,3 +321,66 @@ def rank_keyword_with_details(
     cache[key] = {"_error": f"{type(last_exc).__name__}", "entries": []}
     _save_json_cache(SERP_DETAILS_CACHE_PATH, cache)
     return []
+
+
+def collect_outrankers_for_token(
+    serp: list[dict[str, Any]], self_bundle_id: str,
+) -> dict[str, Any]:
+    """Find self's rank in this SERP and the rivals ranked strictly above it."""
+    if not serp:
+        return {"self_rank": None, "outrankers": []}
+    self_rank: int | None = None
+    for entry in serp:
+        if entry.get("bundle_id") == self_bundle_id:
+            self_rank = entry.get("rank_in_serp")
+            break
+    ceiling = self_rank if self_rank is not None else SELF_NORANK_CEILING
+    outrankers = [e for e in serp if e.get("rank_in_serp", SELF_NORANK_CEILING + 1) < ceiling
+                  and e.get("bundle_id") != self_bundle_id]
+    return {"self_rank": self_rank, "outrankers": outrankers}
+
+
+def aggregate_rivals(per_token: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """Combine per-token outranker lists into one record per unique rival.
+
+    per_token[keyword] = {self_rank, outrankers: [serp_entry, ...], popularity}
+
+    Returns a list of rival dicts (unsorted; caller scores + sorts).
+    """
+    accum: dict[str, dict[str, Any]] = {}
+    for keyword, payload in per_token.items():
+        self_rank = payload.get("self_rank")
+        self_rank_norm = self_rank if self_rank is not None else SELF_NORANK_CEILING
+        popularity = int(payload.get("popularity") or 1)
+        for entry in payload.get("outrankers", []):
+            rid = entry.get("itunes_id")
+            if not rid:
+                continue
+            diff = self_rank_norm - int(entry.get("rank_in_serp", SELF_NORANK_CEILING))
+            if diff <= 0:
+                continue  # strict outrank only
+            rival = accum.setdefault(rid, {
+                "itunes_id": rid,
+                "bundle_id": entry.get("bundle_id", ""),
+                "name": entry.get("name", ""),
+                "primary_genre_id": entry.get("primary_genre_id", 0),
+                "rating": entry.get("rating", 0.0),
+                "review_count": entry.get("review_count", 0),
+                "description_short": (entry.get("description") or "")[:DESCRIPTION_TRUNCATE],
+                "outranked_keywords": [],
+            })
+            rival["outranked_keywords"].append({
+                "keyword": keyword,
+                "self_rank": self_rank_norm,
+                "rival_rank": int(entry.get("rank_in_serp", SELF_NORANK_CEILING)),
+                "diff": diff,
+                "popularity": popularity,
+            })
+
+    for rival in accum.values():
+        rival["outrank_count"] = len(rival["outranked_keywords"])
+        diffs = [k["diff"] for k in rival["outranked_keywords"]]
+        rival["avg_rank_diff"] = statistics.mean(diffs) if diffs else 0
+        rival["threat_score"] = sum(k["popularity"] * k["diff"]
+                                    for k in rival["outranked_keywords"])
+    return list(accum.values())
