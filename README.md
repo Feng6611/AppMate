@@ -1,8 +1,10 @@
 # AppMate
 
-A **Claude Code plugin** — an App Store Connect operations toolkit for indie developers. Python data-layer scripts plus LLM-driven skills that cover **sales reporting, ASO optimization, ASO daily monitoring, feature ideation, competitor research, and growth strategy**.
+A **Claude Code + Codex CLI plugin** — an App Store Connect operations toolkit for indie developers. Python data-layer scripts plus LLM-driven skills that cover **sales reporting, ASO optimization, ASO daily monitoring, feature ideation, competitor research, and growth strategy**.
 
 Design pattern: scripts do the deterministic data work (API calls, caching, rank lookups); the LLM does everything that needs semantic judgment (CJK / Latin tokenization of App Store metadata, candidate generation, strategy reasoning, report rendering). Each workflow involves you only at the start and the end.
+
+The 7 skills are shared between Claude Code and Codex CLI — same `SKILL.md` files, same Python data layer, same reports. The only thing that differs is how you invoke them (slash command on Claude, `$skill-name` or natural language on Codex).
 
 ---
 
@@ -27,6 +29,40 @@ pip install -r requirements.txt
 To find that directory, run `/plugin` inside Claude Code and look at the path next to `appmate`. The default is `~/.claude/plugins/marketplaces/appmate-marketplace/plugins/appmate/`.
 
 > **Python**: tested on 3.10+. No virtualenv required — the three dependencies are tiny.
+
+---
+
+## Install (Codex CLI)
+
+Inside Codex CLI, run:
+
+```
+codex plugin marketplace add fengyiqicoder/appmate
+codex plugin install appmate
+```
+
+Codex pulls the repo, reads `.codex-plugin/plugin.json`, and registers all seven skills. There are no slash commands on Codex — Codex deprecated custom prompts in favor of skills. Invoke a skill either explicitly (`$sales-daily-report`, `$aso-optimize Sticky Note Pro`) or by asking in natural language ("跑下今天的销量日报", "帮我优化 Sticky Note Pro 的 ASO") — Codex matches against each skill's `description` frontmatter to route the request.
+
+Install the Python data-layer dependencies the same way:
+
+```bash
+# in the plugin repo directory Codex cloned for you, default ~/.codex/plugins/appmate/
+pip install -r requirements.txt
+```
+
+The repo also ships an `AGENTS.md` at the root, so running `codex` inside a clone of the repo (without going through the marketplace) also works — Codex auto-loads the agent context and finds skills under `skills/`.
+
+### What's different vs Claude Code
+
+| Aspect | Claude Code | Codex CLI |
+|---|---|---|
+| Invocation | `/appmate-sales`, `/appmate-aso-optimize Sticky Note Pro` | `$sales-daily-report`, `$aso-optimize Sticky Note Pro`, or natural language |
+| Skills | `skills/` (7 SKILL.md, same files) | `skills/` (7 SKILL.md, same files) |
+| Credentials gate | Inline in each skill's Step 0 | Inline in each skill's Step 0 (same) |
+| Reports | Identical | Identical |
+| Setup walkthrough | `/appmate-setup` | `$appmate-setup` or "set up AppMate" |
+
+Wherever a `SKILL.md` says "run `/appmate-setup`", on Codex that means "invoke the `appmate-setup` skill" — same workflow, different invocation syntax.
 
 ---
 
@@ -148,9 +184,11 @@ See `docs/ASC_API_REFERENCE.md` for the full endpoint reference.
 
 ```
 .claude-plugin/   plugin.json + marketplace.json — Claude Code plugin manifests
-commands/         7 /appmate-* slash commands
+.codex-plugin/    plugin.json — Codex CLI plugin manifest (points at the same skills/)
+AGENTS.md         project context auto-loaded by Codex (and other AGENTS.md-aware agents)
+commands/         7 /appmate-* slash commands (Claude Code only — Codex uses skills directly)
 skills/           7 skills (English process docs; aso-optimize ships
-                  a 671-line methodology reference in references/)
+                  a 671-line methodology reference in references/) — shared by both CLIs
 scripts/          15 Python scripts (data layer + entry points) + appmate_config.py
 config/           gitignored — credentials + .p8 keys (ships only the example + README)
 data/             gitignored except for the two keyword_reference tables
@@ -176,6 +214,7 @@ python3 -m pytest
 | Symptom | Fix |
 |---|---|
 | `/appmate-*` commands not appearing in Claude Code | `/plugin install appmate@appmate-marketplace` did not finish; re-run it. Or check `/plugin` to confirm the plugin is enabled. |
+| `$<skill>` not matched / skills not loading in Codex | `codex plugin install appmate` did not finish; re-run it, or check that `~/.codex/plugins/appmate/.codex-plugin/plugin.json` exists. Try `$skills` (or `/skills`) inside Codex to confirm the seven appmate skills are listed. |
 | `ModuleNotFoundError: No module named 'jwt'` | `pip install -r requirements.txt` from the plugin directory. |
 | `analytics report request returned 403` | App Analytics sharing is not enabled in your App Store Connect web UI — separate authorization step. |
 | Apple sales report shows "N/A" / "no data" for today | Apple's daily report lags 1-2 days; the script auto-anchors to the most recent day with data. Re-run tomorrow. |
