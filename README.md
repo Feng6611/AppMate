@@ -231,8 +231,8 @@ python3 -m pytest
 
 | Symptom | Fix |
 |---|---|
-| `/appmate-*` commands not appearing in Claude Code | `/plugin install appmate@appmate-marketplace` did not finish; re-run it. Or check `/plugin` to confirm the plugin is enabled. |
-| `$<skill>` not matched / skills not loading in Codex | `codex plugin install appmate` did not finish; re-run it, or check that `~/.codex/plugins/appmate/.codex-plugin/plugin.json` exists. Try `$skills` (or `/skills`) inside Codex to confirm the seven appmate skills are listed. |
+| `/appmate-*` commands not appearing in Claude Code | Install didn't finish — re-run both: `/plugin marketplace add fengyiqicoder/AppMate` then `/plugin install appmate@appmate-marketplace`. Or check `/plugin` to confirm the plugin is enabled. |
+| `$<skill>` not matched / skills not loading in Codex | Install didn't finish — re-run both: `codex plugin marketplace add fengyiqicoder/appmate` then `codex plugin install appmate`. Or check that `~/.codex/plugins/appmate/.codex-plugin/plugin.json` exists. Try `$skills` (or `/skills`) inside Codex to confirm the seven appmate skills are listed. |
 | `ModuleNotFoundError: No module named 'jwt'` | `pip install -r requirements.txt` from the plugin directory. |
 | `analytics report request returned 403` | App Analytics sharing is not enabled in your App Store Connect web UI — separate authorization step. |
 | Apple sales report shows "N/A" / "no data" for today | Apple's daily report lags 1-2 days; the script auto-anchors to the most recent day with data. Re-run tomorrow. |
