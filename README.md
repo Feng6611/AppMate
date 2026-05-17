@@ -68,7 +68,7 @@ Wherever a `SKILL.md` says "run `/appmate-setup`", on Codex that means "invoke t
 
 ## Staying up to date
 
-**Claude Code:** AppMate ships a `SessionStart` hook (`hooks/hooks.json` → `scripts/check_for_update.py`) that runs once at the start of each Claude Code session. It compares your installed commit against the latest commit on `main` at [github.com/fengyiqicoder/AppMate](https://github.com/fengyiqicoder/AppMate) and, when you're behind, surfaces a one-line banner that points you at `/plugin` to upgrade. The check is cached for 24 h in `${CLAUDE_PLUGIN_DATA}/update_check.json`, network failures are silent, and the hook never blocks the session.
+**Claude Code:** AppMate ships a `SessionStart` hook (`hooks/hooks.json` → `scripts/check_for_update.py`) that runs once at the start of each Claude Code session. It compares your installed commit against the latest commit on `master` at [github.com/fengyiqicoder/AppMate](https://github.com/fengyiqicoder/AppMate) and, when you're behind, surfaces a one-line banner that points you at `/plugin` to upgrade. The check is cached for 24 h in `${CLAUDE_PLUGIN_DATA}/update_check.json`, network failures are silent, and the hook never blocks the session.
 
 Force a fresh check (ignore cache) for debugging:
 
@@ -76,7 +76,7 @@ Force a fresh check (ignore cache) for debugging:
 python3 scripts/check_for_update.py check
 ```
 
-To pull the new version, open `/plugin` in Claude Code and update `appmate` from the marketplace listing — that re-clones the latest `main` into `~/.claude/plugins/marketplaces/appmate-marketplace/`.
+To pull the new version, open `/plugin` in Claude Code and update `appmate` from the marketplace listing — that re-clones the latest `master` into `~/.claude/plugins/marketplaces/appmate-marketplace/`.
 
 **Codex CLI:** no auto-check (Codex plugins don't expose a session-start hook). Run `codex plugin update appmate` when you want the latest version, or watch the [Releases page](https://github.com/fengyiqicoder/appmate/releases).
 
@@ -239,7 +239,7 @@ python3 -m pytest
 | `fuzzy match` finds the wrong app | Pass the exact App Store ID or bundle ID instead of a name. |
 | `AppMate refuses to run — the configured API key has write access` | Your API key has Developer / Finance / Admin (caught by the probe) or App Manager (caught by the docs). Revoke the key in App Store Connect, generate a new one with **only read-only roles** (Sales / Access to Reports / Customer Support / Marketing), replace the `.p8` and `key_id`, delete `data/key_safety.json`, re-run `python3 scripts/appmate_config.py check`. |
 | `Could not reach App Store Connect to verify key roles` | Network error during the role probe. AppMate will not start without a successful probe — fix connectivity and retry. |
-| Update-available banner doesn't show up even though `main` has new commits | The verdict is cached for 24 h. Delete `${CLAUDE_PLUGIN_DATA}/update_check.json` (or `data/update_check.json` if `CLAUDE_PLUGIN_DATA` is not set) and start a new Claude Code session, or run `python3 scripts/check_for_update.py check` to force a fresh check. |
+| Update-available banner doesn't show up even though `master` has new commits | The verdict is cached for 24 h. Delete `${CLAUDE_PLUGIN_DATA}/update_check.json` (or `data/update_check.json` if `CLAUDE_PLUGIN_DATA` is not set) and start a new Claude Code session, or run `python3 scripts/check_for_update.py check` to force a fresh check. |
 
 ---
 

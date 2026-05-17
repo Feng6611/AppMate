@@ -3,7 +3,7 @@
 Wired in ``hooks/hooks.json`` against the ``startup`` and ``resume`` matchers,
 so Claude Code runs it once at the top of every fresh session (and on resume
 of a saved one). Compares the local plugin's HEAD commit against the latest
-commit on ``github.com/fengyiqicoder/AppMate@main`` and, when they differ,
+commit on ``github.com/fengyiqicoder/AppMate@master`` and, when they differ,
 emits a one-line ``{"systemMessage": ...}`` banner pointing the user at
 ``/plugin`` to upgrade.
 
@@ -36,7 +36,7 @@ import urllib.request
 from typing import Any
 
 REPO = "fengyiqicoder/AppMate"
-BRANCH = "main"
+BRANCH = "master"
 CACHE_TTL_SECONDS = 24 * 3600
 HTTP_TIMEOUT_SECONDS = 5
 GIT_TIMEOUT_SECONDS = 5
