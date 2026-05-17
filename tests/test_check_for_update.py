@@ -306,6 +306,52 @@ def test_hook_silent_on_unknown_status(isolated_env, monkeypatch, capsys):
     assert capsys.readouterr().out == ""
 
 
+# --- warn_if_outdated (skill-entry preflight) -----------------------------
+def test_warn_if_outdated_prints_banner_when_outdated(isolated_env, monkeypatch, capsys):
+    _patch_versions(monkeypatch, local="0.2.0", remote="0.2.1")
+    check_for_update.warn_if_outdated()
+    err = capsys.readouterr().err
+    assert "[appmate]" in err
+    assert "out of date" in err
+    assert "0.2.0" in err and "0.2.1" in err
+
+
+def test_warn_if_outdated_silent_when_up_to_date(isolated_env, monkeypatch, capsys):
+    _patch_versions(monkeypatch, local="0.2.1", remote="0.2.1")
+    check_for_update.warn_if_outdated()
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert captured.out == ""
+
+
+def test_warn_if_outdated_silent_when_status_unknown(isolated_env, monkeypatch, capsys):
+    """Network failure or missing manifest must not print anything."""
+    _patch_versions(monkeypatch, local="0.2.0", remote=None)
+    check_for_update.warn_if_outdated()
+    assert capsys.readouterr().err == ""
+
+
+def test_warn_if_outdated_swallows_exceptions(isolated_env, monkeypatch, capsys):
+    """Version checking must NEVER raise — it would block the skill from running."""
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("simulated upstream crash")
+
+    monkeypatch.setattr(check_for_update, "check", boom)
+    # Must not raise.
+    check_for_update.warn_if_outdated()
+    assert capsys.readouterr().err == ""
+
+
+def test_warn_if_outdated_writes_to_custom_stream(isolated_env, monkeypatch):
+    _patch_versions(monkeypatch, local="0.2.0", remote="0.2.1")
+    buf = io.StringIO()
+    check_for_update.warn_if_outdated(stream=buf)
+    text = buf.getvalue()
+    assert "[appmate]" in text
+    assert "0.2.0" in text
+
+
 # --- Plugin-root / cache-path resolution ---------------------------------
 def test_plugin_root_prefers_env(isolated_env):
     plugin_root, _ = isolated_env

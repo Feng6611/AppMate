@@ -254,6 +254,40 @@ def check(*, force: bool = False) -> dict[str, Any]:
     return _verdict(local, remote, source="fresh")
 
 
+# --- Skill-entry preflight -----------------------------------------------
+def warn_if_outdated(stream=None) -> None:
+    """Non-blocking version-check preflight for skill entrypoints.
+
+    Called from ``key_safety.require_safe_key_or_exit`` (i.e. at the top of
+    every workflow script's ``main()``) so each skill invocation gets its
+    own outdated-version banner — the SessionStart hook only fires once per
+    session and that is too coarse for a long-running session.
+
+    Behaviour:
+        * Reads the shared 24h cache, so most invocations are O(file-read).
+        * On ``status == "outdated"``, prints the banner to ``stream``
+          (default ``sys.stderr``) prefixed with ``[appmate]`` so it is
+          clearly distinguishable from skill output.
+        * Any other status — including network failures or a malformed
+          manifest — produces no output. Version checking must NEVER block
+          a skill from running; it is purely informational.
+        * All exceptions are swallowed for the same reason.
+    """
+    if stream is None:
+        stream = sys.stderr
+    try:
+        result = check()
+    except Exception:
+        return
+    message = result.get("message") if isinstance(result, dict) else None
+    if not message:
+        return
+    try:
+        print(f"[appmate] {message}", file=stream)
+    except Exception:
+        pass
+
+
 # --- Entry points ---------------------------------------------------------
 def run_hook() -> None:
     """SessionStart hook entrypoint. Read stdin, emit JSON if outdated, exit 0."""
