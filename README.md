@@ -10,10 +10,19 @@ The 7 skills are shared between Claude Code and Codex CLI — same `SKILL.md` fi
 
 ## Install (Claude Code)
 
-Inside Claude Code, run:
+Two steps, run them **one at a time** inside Claude Code — wait for step 1 to finish before pasting step 2.
+
+**Step 1** — register this repo as a plugin marketplace:
 
 ```
 /plugin marketplace add fengyiqicoder/AppMate
+```
+
+Wait until Claude Code confirms the marketplace was added.
+
+**Step 2** — install the `appmate` plugin from that marketplace:
+
+```
 /plugin install appmate@appmate-marketplace
 ```
 
@@ -34,10 +43,19 @@ To find that directory, run `/plugin` inside Claude Code and look at the path ne
 
 ## Install (Codex CLI)
 
-Inside Codex CLI, run:
+Two steps, run them **one at a time** inside Codex CLI — wait for step 1 to finish before running step 2.
+
+**Step 1** — register this repo as a plugin marketplace:
 
 ```
 codex plugin marketplace add fengyiqicoder/appmate
+```
+
+Wait until Codex confirms the marketplace was added.
+
+**Step 2** — install the `appmate` plugin from that marketplace:
+
+```
 codex plugin install appmate
 ```
 
@@ -231,8 +249,8 @@ python3 -m pytest
 
 | Symptom | Fix |
 |---|---|
-| `/appmate-*` commands not appearing in Claude Code | Install didn't finish — re-run both: `/plugin marketplace add fengyiqicoder/AppMate` then `/plugin install appmate@appmate-marketplace`. Or check `/plugin` to confirm the plugin is enabled. |
-| `$<skill>` not matched / skills not loading in Codex | Install didn't finish — re-run both: `codex plugin marketplace add fengyiqicoder/appmate` then `codex plugin install appmate`. Or check that `~/.codex/plugins/appmate/.codex-plugin/plugin.json` exists. Try `$skills` (or `/skills`) inside Codex to confirm the seven appmate skills are listed. |
+| `/appmate-*` commands not appearing in Claude Code | Install didn't finish. Re-run the two steps from "Install (Claude Code)" above one at a time: first `/plugin marketplace add fengyiqicoder/AppMate`, wait for the confirmation, then `/plugin install appmate@appmate-marketplace`. Or check `/plugin` to confirm the plugin is enabled. |
+| `$<skill>` not matched / skills not loading in Codex | Install didn't finish. Re-run the two steps from "Install (Codex CLI)" above one at a time: first `codex plugin marketplace add fengyiqicoder/appmate`, wait for the confirmation, then `codex plugin install appmate`. Or check that `~/.codex/plugins/appmate/.codex-plugin/plugin.json` exists. Try `$skills` (or `/skills`) inside Codex to confirm the seven appmate skills are listed. |
 | `ModuleNotFoundError: No module named 'jwt'` | `pip install -r requirements.txt` from the plugin directory. |
 | `analytics report request returned 403` | App Analytics sharing is not enabled in your App Store Connect web UI — separate authorization step. |
 | Apple sales report shows "N/A" / "no data" for today | Apple's daily report lags 1-2 days; the script auto-anchors to the most recent day with data. Re-run tomorrow. |
