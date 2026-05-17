@@ -70,17 +70,18 @@ All secrets and account-specific constants live in a **gitignored `config/` dire
 
 ### Setup steps
 
-1. Copy the template:
-   ```bash
-   cp config/credentials.example.txt config/credentials.txt
-   ```
-2. **Generate the API key** with only the three safe roles checked (see the "API key role selection" section above). Download the `.p8` file Apple gives you — Apple does not let you re-download it later.
-3. Fill in `config/credentials.txt`:
-   - `issuer_id`, `key_id` — from App Store Connect → Users and Access → Integrations → App Store Connect API
-   - `private_key_path` — path to your `.p8` key; drop the `.p8` file into `config/` and use a repo-relative path like `config/AuthKey_XXXXXXXX.p8`
-   - `vendor_number` — from App Store Connect → Payments and Financial Reports
-4. Place the `.p8` private key file inside `config/` (it is gitignored).
-5. Install Python dependencies: `pip install -r requirements.txt`
+The user only does the two physical-world steps (generate the key in ASC, drop the `.p8` file into `config/`). Everything else — copying the template, filling in fields, running the self-check — Claude does for them.
+
+1. **User generates the API key** with only the safe roles checked (see the "API key role selection" section above). Apple shows the `.p8` once; download it.
+2. **User drops the `.p8` file into `config/`** (it is gitignored). Claude cannot do this — the file lives on the user's machine.
+3. **Claude asks the user for the 4 values inline (do NOT tell them to edit `credentials.txt` themselves):**
+   - `issuer_id` — UUID at the top of ASC → Users and Access → Integrations → App Store Connect API
+   - `key_id` — the 10-character Key ID of the key they just generated (same page)
+   - `.p8` filename — what they named the file they dropped into `config/` (e.g. `AuthKey_ABC1234567.p8`)
+   - `vendor_number` — the 8-digit Vendor # in the top-left of ASC → Payments and Financial Reports
+
+   Then Claude writes `config/credentials.txt` directly (copying `config/credentials.example.txt` first if it doesn't exist) with the four values filled in and `private_key_path = config/<their .p8 filename>`. Never instruct the user to open or edit `credentials.txt` themselves.
+4. Claude installs Python dependencies: `pip install -r requirements.txt`
 
 `appmate_config.py` resolves paths eagerly and loads credentials lazily — a missing `config/credentials.txt` will not crash imports, but any script that actually needs a credential raises a clear error pointing back here.
 
