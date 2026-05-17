@@ -179,11 +179,17 @@ def _write_cache(path: pathlib.Path, local_version: str, remote_version: str) ->
 
 
 # --- Verdict --------------------------------------------------------------
+# Horizontal-rule banner: two ━ rules sandwich a 2-line core. Width chosen
+# so the rules visually balance the longest content line (the GitHub URL).
+_BANNER_RULE = "━" * 58
+
+
 def _format_banner(local_version: str, remote_version: str) -> str:
     return (
-        f"AppMate is out of date "
-        f"(installed {local_version} -> latest {remote_version} on github.com/{REPO}). "
-        "Run `/plugin` and update appmate to pull the newest skills, commands, and fixes."
+        f"{_BANNER_RULE}\n"
+        f"  🆕  AppMate Update Available — {local_version}  →  {remote_version}\n"
+        f"  👉  Run  /plugin  to update    🔗 github.com/{REPO}\n"
+        f"{_BANNER_RULE}"
     )
 
 
@@ -265,9 +271,10 @@ def warn_if_outdated(stream=None) -> None:
 
     Behaviour:
         * Reads the shared 24h cache, so most invocations are O(file-read).
-        * On ``status == "outdated"``, prints the banner to ``stream``
-          (default ``sys.stderr``) prefixed with ``[appmate]`` so it is
-          clearly distinguishable from skill output.
+        * On ``status == "outdated"``, prints the 4-line horizontal-rule
+          banner to ``stream`` (default ``sys.stderr``). The banner is
+          self-identifying ("AppMate Update Available") so no extra prefix
+          is needed.
         * Any other status — including network failures or a malformed
           manifest — produces no output. Version checking must NEVER block
           a skill from running; it is purely informational.
@@ -283,7 +290,7 @@ def warn_if_outdated(stream=None) -> None:
     if not message:
         return
     try:
-        print(f"[appmate] {message}", file=stream)
+        print(message, file=stream)
     except Exception:
         pass
 

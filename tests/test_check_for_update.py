@@ -127,11 +127,14 @@ def test_outdated_banner_includes_versions_and_repo(isolated_env, monkeypatch):
     result = check_for_update.check(force=True)
     assert result["status"] == "outdated"
     msg = result["message"]
-    assert "out of date" in msg
+    assert "AppMate Update Available" in msg
     assert "0.2.0" in msg
     assert "0.2.1" in msg
     assert "/plugin" in msg
     assert check_for_update.REPO in msg
+    # New banner shape: horizontal rules + multi-line, not a one-liner.
+    assert "━" in msg
+    assert msg.count("\n") >= 3
 
 
 def test_missing_local_version_returns_unknown(isolated_env, monkeypatch):
@@ -280,7 +283,7 @@ def test_hook_emits_systemmessage_when_outdated(isolated_env, monkeypatch, capsy
     out = capsys.readouterr().out
     payload = json.loads(out)
     assert "systemMessage" in payload
-    assert "out of date" in payload["systemMessage"]
+    assert "AppMate Update Available" in payload["systemMessage"]
 
 
 def test_hook_silent_when_up_to_date(isolated_env, monkeypatch, capsys):
@@ -311,9 +314,11 @@ def test_warn_if_outdated_prints_banner_when_outdated(isolated_env, monkeypatch,
     _patch_versions(monkeypatch, local="0.2.0", remote="0.2.1")
     check_for_update.warn_if_outdated()
     err = capsys.readouterr().err
-    assert "[appmate]" in err
-    assert "out of date" in err
+    assert "AppMate Update Available" in err
     assert "0.2.0" in err and "0.2.1" in err
+    assert "━" in err
+    # Old "[appmate]" prefix removed — new banner is self-identifying.
+    assert "[appmate]" not in err
 
 
 def test_warn_if_outdated_silent_when_up_to_date(isolated_env, monkeypatch, capsys):
@@ -348,7 +353,7 @@ def test_warn_if_outdated_writes_to_custom_stream(isolated_env, monkeypatch):
     buf = io.StringIO()
     check_for_update.warn_if_outdated(stream=buf)
     text = buf.getvalue()
-    assert "[appmate]" in text
+    assert "AppMate Update Available" in text
     assert "0.2.0" in text
 
 
