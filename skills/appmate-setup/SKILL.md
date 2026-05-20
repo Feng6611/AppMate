@@ -9,7 +9,7 @@ description: Set up or troubleshoot AppMate plugin credentials and config. Use w
 
 ## One-line summary
 
-Install App Store Connect API credentials into a gitignored `config/` folder, then call them through `scripts/asc_client.py`. Keyword popularity / difficulty come from the static reference table shipped with the plugin (`data/keyword_reference_<region>.json`) — no extra setup. Competitor data is produced locally by `/appmate-competitors` (iTunes Search SERP overlap, no remote service).
+Install App Store Connect API credentials into a gitignored `config/` folder, then call them through `scripts/asc_client.py`. Keyword popularity / difficulty come from the static reference table shipped with the plugin (`data/keyword_reference_<region>.json`) — no extra setup. Competitor data is produced locally by the `competitor-research` skill (iTunes Search SERP overlap, no remote service).
 
 ## The data source
 
@@ -17,7 +17,7 @@ Install App Store Connect API credentials into a gitignored `config/` folder, th
 |---|---|---|---|---|
 | 1 | **Apple App Store Connect API** | Metadata / sales & download reports / IAP & subscriptions / reviews / builds | `config/credentials.txt` + a `.p8` key in `config/` | `scripts/asc_client.py` |
 
-> Note: **SoloMax RAG MCP and AppMate RAG API have both been removed** from this project. Growth methodology was distilled offline into the `growth-strategy` skill's static "methodology cheat-sheet"; competitor evidence now comes from `/appmate-competitors` (iTunes Search SERP overlap, run locally).
+> Note: **SoloMax RAG MCP and AppMate RAG API have both been removed** from this project. Growth methodology was distilled offline into the `growth-strategy` skill's static "methodology cheat-sheet"; competitor evidence now comes from the `competitor-research` skill (iTunes Search SERP overlap, run locally).
 
 ## ⚠ API key role selection (read this BEFORE generating the key)
 
@@ -112,7 +112,7 @@ python3 scripts/asc_client.py token | head -c 30 && echo "..."
 python3 -c "import sys; sys.path.insert(0,'scripts'); from asc_client import apps; print(f'{len(apps())} apps')"
 ```
 
-Check 0 is the **universal gate**: every downstream workflow script (`sales_report.py`, `aso_daily.py`, `aso_optimize_v2.py`, `growth_strategy.py`, `feature_ideate.py`) calls `key_safety.require_safe_key_or_exit()` at the top of `main()`, which combines the offline credential check and the role probe. Each `/appmate-*` command also runs this check before invoking its skill.
+Check 0 is the **universal gate**: every downstream workflow script (`sales_report.py`, `aso_daily.py`, `aso_optimize_v2.py`, `growth_strategy.py`, `feature_ideate.py`) calls `key_safety.require_safe_key_or_exit()` at the top of `main()`, which combines the offline credential check and the role probe. Each AppMate skill also runs this check at Step 0 before doing any other work.
 
 If check 0 reports the key as **UNSAFE**, stop immediately: revoke the key in App Store Connect, generate a new one with only read-only roles (Sales / Access to Reports / Customer Support / Marketing), replace the `.p8` + `key_id`, delete `data/key_safety.json`, and re-run check 0. AppMate will not run a single workflow while an unsafe key is configured.
 

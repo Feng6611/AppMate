@@ -6,7 +6,7 @@ description: Generate a stage-diagnosed growth strategy for an app — a phase d
 # Growth Strategy Workflow v2
 
 > This skill is the single authoritative reference for the growth strategy flow. Re-read it before every run.
-> v2: dropped the AppMate RAG dependency. Competitors now come from the `/appmate-competitors` output (auto-chained when missing), unifying the competitive signal with `feature-ideation`. v1 had been the "RAG top-8 by seed word" design.
+> v2: dropped the AppMate RAG dependency. Competitors now come from the `competitor-research` skill's output (auto-chained when missing), unifying the competitive signal with `feature-ideation`. v1 had been the "RAG top-8 by seed word" design.
 
 ## Step 0 — Prerequisites
 
@@ -18,11 +18,11 @@ Every step in this skill calls App Store Connect APIs. **Before any other step**
 python3 scripts/appmate_config.py check
 ```
 
-If exit code ≠ 0, STOP. Do not invoke any other part of this skill, do not run `scripts/growth_strategy.py`. Tell the user AppMate credentials are not configured, show the precheck output verbatim, and tell them to run `/appmate-setup`. The downstream script also enforces this gate (exits 2 with the same message).
+If exit code ≠ 0, STOP. Do not invoke any other part of this skill, do not run `scripts/growth_strategy.py`. Tell the user AppMate credentials are not configured, show the precheck output verbatim, and tell them to invoke the `appmate-setup` skill. The downstream script also enforces this gate (exits 2 with the same message).
 
-### 0.2 Competitor data: auto-chain `/appmate-competitors` if missing
+### 0.2 Competitor data: auto-chain the `competitor-research` skill if missing
 
-This workflow consumes `data/competitors_<slug>.json`, the final artifact produced by the `competitor-research` skill (i.e. `/appmate-competitors <app>`). Both skills compute slug via `slugify(canonical_app_name, market)`, so passing the same app argument to both guarantees the slug matches.
+This workflow consumes `data/competitors_<slug>.json`, the final artifact produced by the `competitor-research` skill (invoked for the same `<app>`). Both skills compute slug via `slugify(canonical_app_name, market)`, so passing the same app argument to both guarantees the slug matches.
 
 **Decision rule — before invoking `growth_strategy.py`:**
 
@@ -31,9 +31,9 @@ This workflow consumes `data/competitors_<slug>.json`, the final artifact produc
 3. **If it does not exist**, invoke the `competitor-research` skill end-to-end for the same `<app>` argument first — all three stages: Stage 1 script `analyze`, Stage 2 LLM tokenization, Stage 3 LLM relevance pass + final-JSON + markdown write. Paste the rivals markdown back into the conversation per that skill's own rules. Then return here and proceed to Step 1 of growth-strategy. The user gets two reports out of one ask: rivals first, then the growth plan. That is intentional — both are useful, and the rivals card is the same competitive evidence the LLM will read in Step 2.
 4. **If it exists**, proceed directly. Optionally check `competitors_generated_at`; if it is > 30 days old, mention staleness when delivering the final growth report (do **not** auto-refresh unless the user asks).
 
-**No RAG fallback. No placeholder competitors.** The only two paths are: the cached file, or a fresh `/appmate-competitors` run.
+**No RAG fallback. No placeholder competitors.** The only two paths are: the cached file, or a fresh `competitor-research` skill run.
 
-**Safety net**: `growth_strategy.py` exits 2 with `competitors JSON not found` if the file is missing at script-execution time. This catches the case where the script was invoked outside the skill (cron, manual CLI). When it fires, treat it the same way — invoke `/appmate-competitors` for the same app, then re-run.
+**Safety net**: `growth_strategy.py` exits 2 with `competitors JSON not found` if the file is missing at script-execution time. This catches the case where the script was invoked outside the skill (cron, manual CLI). When it fires, treat it the same way — invoke the `competitor-research` skill for the same app, then re-run.
 
 ## One-line summary
 
@@ -54,13 +54,13 @@ Given a live app → the script aggregates **sales trend + ASO state + reviews +
 | Item | Content |
 |---|---|
 | **Trigger** | the user says "run growth strategy for `<app>`" |
-| **Input** | `data/apps_full.json` (reviews/locale) + `data/sales_cache.json` (sales) + `data/aso_rank_snapshots.json` (ASO state) + **`data/competitors_<slug>.json`** (from `/appmate-competitors` — auto-chained on first run for an app, then cached) + **the "methodology cheat-sheet" section of this skill** |
+| **Input** | `data/apps_full.json` (reviews/locale) + `data/sales_cache.json` (sales) + `data/aso_rank_snapshots.json` (ASO state) + **`data/competitors_<slug>.json`** (from the `competitor-research` skill — auto-chained on first run for an app, then cached) + **the "methodology cheat-sheet" section of this skill** |
 | **Output** | `data/phase_a_growth_<slug>.json` (intermediate) + `data/growth_strategy_<slug>.md` (final) + **Claude pastes the full markdown back into the conversation** |
 | **Intervention points** | 2 (trigger + receive); optional follow-up "detail one strategy" |
 
 ## Workflow overview (3 steps)
 
-1. **Step 1 · Script pre-aggregation (`growth_strategy.py`)** — app fuzzy match (reuses `aso_optimize_v2`) → sales trend (D30 / prior D30 / slope) → stage detection (4-stage rule) → ASO state extraction (locale / main-market ranking) → review-signal summary (rating distribution / negative feedback / wishlist) → load competitors from `data/competitors_<slug>.json` (Claude should have already auto-chained `/appmate-competitors` per §0.2 if the file was missing; script exits 2 as a safety net otherwise) → `data/phase_a_growth_<slug>.json`.
+1. **Step 1 · Script pre-aggregation (`growth_strategy.py`)** — app fuzzy match (reuses `aso_optimize_v2`) → sales trend (D30 / prior D30 / slope) → stage detection (4-stage rule) → ASO state extraction (locale / main-market ranking) → review-signal summary (rating distribution / negative feedback / wishlist) → load competitors from `data/competitors_<slug>.json` (Claude should have already auto-chained the `competitor-research` skill per §0.2 if the file was missing; script exits 2 as a safety net otherwise) → `data/phase_a_growth_<slug>.json`.
 2. **Step 2 · Methodology match + strategy generation (Claude, conversation layer)** — read `stage` from the phase_a JSON → read the 3-5 playbook items for that stage from the cheat-sheet below → use own data + competitor evidence + methodology to brainstorm 8-12 candidate strategies → anti-junk filter → internal ranking → take the top 3-5 → expand each into 4 executable steps.
 3. **Step 3 · Render + deliver (Claude)** — top "stage diagnosis" section (one paragraph + key numbers) → 3-5 strategies, 4 steps each → save `data/growth_strategy_<slug>.md` → **paste the full markdown back into the conversation**.
 
@@ -99,15 +99,15 @@ From `data/apps_full.json` + `data/aso_rank_snapshots.json`: `current_locales`, 
 
 ## 1f. Competitor loader (no RAG)
 
-`load_competitors(app_name, market)` reads `OUTPUT_DIR / f"competitors_{slugify(app_name, market)}.json"`. The file is the final artifact of `/appmate-competitors` (see `skills/competitor-research/SKILL.md`). Per §0.2, Claude should ensure this file exists *before* invoking the script — by auto-chaining `/appmate-competitors` when it's missing.
+`load_competitors(app_name, market)` reads `OUTPUT_DIR / f"competitors_{slugify(app_name, market)}.json"`. The file is the final artifact of the `competitor-research` skill (see `skills/competitor-research/SKILL.md`). Per §0.2, Claude should ensure this file exists *before* invoking the script — by auto-chaining that skill when it's missing.
 
 | Step | Behavior |
 |---|---|
-| File missing | return `None` → `build_phase_a` returns `None` → `main()` prints a safety-net message pointing at `/appmate-competitors` and exits 2. Normally never fires when the skill flow was followed; fires if the script was invoked directly. |
+| File missing | return `None` → `build_phase_a` returns `None` → `main()` prints a safety-net message pointing at the `competitor-research` skill and exits 2. Normally never fires when the skill flow was followed; fires if the script was invoked directly. |
 | File present | read `payload["filtered"]` (already top-10 by `threat_score`, already passed the LLM relevance pass) and copy these fields per entry: `name`, `description_short`, `outranked_keywords`, `relevance_reason`, `threat_score`, `rating`, `review_count` |
 | Stale data | the script does **not** check `generated_at` freshness; it surfaces the timestamp in phase_a so the LLM can flag staleness in the report if it looks old (> 30 days) |
 
-> **v1 → v2 change**: v1 called `appmate_rag_client.search(query=seed, region=market, top_k=8, ...)` directly with a seed-word the script picked from the app's name. The seed-extraction was fragile (compound brand names lost context, English-only `"app"` fallback returned useless rivals) and the RAG result was a different shape than the SERP-overlap rivals produced by `/appmate-competitors`. v2 reuses the already-curated, already-LLM-filtered result of `/appmate-competitors`, so growth-strategy and feature-ideation produce a coherent picture of the same competitive landscape.
+> **v1 → v2 change**: v1 called `appmate_rag_client.search(query=seed, region=market, top_k=8, ...)` directly with a seed-word the script picked from the app's name. The seed-extraction was fragile (compound brand names lost context, English-only `"app"` fallback returned useless rivals) and the RAG result was a different shape than the SERP-overlap rivals produced by the `competitor-research` skill. v2 reuses the already-curated, already-LLM-filtered result of that skill, so growth-strategy and feature-ideation produce a coherent picture of the same competitive landscape.
 
 ## 1g. phase_a JSON shape
 
@@ -315,7 +315,7 @@ Want one expanded? Tell me the number and I can help break it into a mini-plan (
 
 | Direction | Content |
 |---|---|
-| **Upstream auto-chain** | `data/apps_full.json` / `data/sales_cache.json` / `data/aso_rank_snapshots.json` + **`data/competitors_<slug>.json`**. When the competitors file is missing, this skill first invokes `/appmate-competitors <app>` end-to-end (rivals markdown gets pasted back as a side effect), then continues. |
+| **Upstream auto-chain** | `data/apps_full.json` / `data/sales_cache.json` / `data/aso_rank_snapshots.json` + **`data/competitors_<slug>.json`**. When the competitors file is missing, this skill first invokes the `competitor-research` skill for `<app>` end-to-end (rivals markdown gets pasted back as a side effect), then continues. |
 | **Side-chain trigger** | the `aso-daily-report` skill finds an app's keyword dropping out of the top 20 → trigger this flow for a "why did it drop / how to fix" analysis |
 | **Cross-workflow reference** | decline-stage strategies may say "run the `aso-optimize` skill once"; early growth may say "run the `feature-ideation` skill once to find an expansion feature" |
 | **Methodology maintenance** | when a new growth tactic is worth solidifying → manually update the matching stage of this skill's cheat-sheet |
@@ -342,7 +342,7 @@ python3 scripts/growth_strategy.py "<app>"
 - Apple's sales data lags 1-2 days → the slope is computed from the DATA_TODAY anchor, not the real today.
 - Stage-detection thresholds (100 / 0.8 / 1.2 / 20) are empirical; for very small or very large download volumes they may misjudge.
 - The methodology cheat-sheet is maintained as a static document — it does not auto-sync; human inspection is needed.
-- The competitor list reflects whenever `/appmate-competitors` was last run for this app — staleness shows up in `competitors_generated_at`; if it's > 30 days old, suggest re-running the prereq before trusting the report.
+- The competitor list reflects whenever the `competitor-research` skill was last run for this app — staleness shows up in `competitors_generated_at`; if it's > 30 days old, suggest re-running the prereq before trusting the report.
 - The composite score is subjective; running the same app multiple times varies ±20% (run twice and take the union for key decisions).
 - The 4 stages are discrete; a transitional app (slope = 0.85 or 1.15) may fall into the wrong camp — the LLM should manually note "in an X / Y transition".
 

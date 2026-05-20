@@ -15,7 +15,7 @@ Every step in this skill calls App Store Connect APIs. **Before any other step**
 python3 scripts/appmate_config.py check
 ```
 
-If exit code ≠ 0, STOP. Do not invoke any other part of this skill, do not run `scripts/aso_optimize_v2.py`. Tell the user AppMate credentials are not configured, show the precheck output verbatim, and tell them to run `/appmate-setup`. The downstream script also enforces this gate (exits 2 with the same message).
+If exit code ≠ 0, STOP. Do not invoke any other part of this skill, do not run `scripts/aso_optimize_v2.py`. Tell the user AppMate credentials are not configured, show the precheck output verbatim, and tell them to invoke the `appmate-setup` skill. The downstream script also enforces this gate (exits 2 with the same message).
 
 ## Input / Output
 

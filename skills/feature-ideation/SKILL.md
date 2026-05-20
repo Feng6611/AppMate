@@ -6,7 +6,7 @@ description: Generate prioritized feature recommendations for an app from review
 # Feature Ideation Workflow v3
 
 > This skill is the single authoritative reference for the feature ideation flow. Re-read it before every run.
-> v3: removed mechanical review bucketing (rating thresholds + trigger-word list) and removed the direct AppMate RAG dependency. The LLM now classifies each raw review on its own; competitors come from the `/appmate-competitors` output. v2 had been the prior "negative + wishlist buckets + RAG seed" design.
+> v3: removed mechanical review bucketing (rating thresholds + trigger-word list) and removed the direct AppMate RAG dependency. The LLM now classifies each raw review on its own; competitors come from the `competitor-research` skill's output. v2 had been the prior "negative + wishlist buckets + RAG seed" design.
 
 ## Step 0 — Prerequisites
 
@@ -18,11 +18,11 @@ Every step in this skill calls App Store Connect APIs. **Before any other step**
 python3 scripts/appmate_config.py check
 ```
 
-If exit code ≠ 0, STOP. Do not invoke any other part of this skill, do not run `scripts/feature_ideate.py`. Tell the user AppMate credentials are not configured, show the precheck output verbatim, and tell them to run `/appmate-setup`. The downstream script also enforces this gate (exits 2 with the same message).
+If exit code ≠ 0, STOP. Do not invoke any other part of this skill, do not run `scripts/feature_ideate.py`. Tell the user AppMate credentials are not configured, show the precheck output verbatim, and tell them to invoke the `appmate-setup` skill. The downstream script also enforces this gate (exits 2 with the same message).
 
-### 0.2 Competitor data: auto-chain `/appmate-competitors` if missing
+### 0.2 Competitor data: auto-chain the `competitor-research` skill if missing
 
-This workflow consumes `data/competitors_<slug>.json`, the final artifact produced by the `competitor-research` skill (i.e. `/appmate-competitors <app>`). Both skills compute slug via `slugify(canonical_app_name, market)`, so passing the same app argument to both guarantees the slug matches.
+This workflow consumes `data/competitors_<slug>.json`, the final artifact produced by the `competitor-research` skill (invoked for the same `<app>`). Both skills compute slug via `slugify(canonical_app_name, market)`, so passing the same app argument to both guarantees the slug matches.
 
 **Decision rule — before invoking `feature_ideate.py`:**
 
@@ -31,7 +31,7 @@ This workflow consumes `data/competitors_<slug>.json`, the final artifact produc
 3. **If it does not exist**, invoke the `competitor-research` skill end-to-end for the same `<app>` argument first — all three stages: Stage 1 script `analyze`, Stage 2 LLM tokenization, Stage 3 LLM relevance pass + final-JSON + markdown write. Paste the rivals markdown back into the conversation per that skill's own rules. Then return here and proceed to Step 1 of feature-ideation. The user gets two reports out of one ask: rivals first, then features. That is intentional — both are useful, and the rivals card is also the new evidence basis for feature ideas.
 4. **If it exists**, proceed directly. Optionally check `competitors_generated_at`; if it is > 30 days old, mention staleness when delivering the final feature report (do **not** auto-refresh unless the user asks).
 
-**No RAG fallback. No placeholder competitors.** The only two paths are: the cached file, or a fresh `/appmate-competitors` run. The earlier (v2) direct `appmate_rag_client.search(...)` call is gone for good — competitor evidence is unified through the `competitor-research` flow so the two workflows stay coherent.
+**No RAG fallback. No placeholder competitors.** The only two paths are: the cached file, or a fresh `competitor-research` skill run. The earlier (v2) direct `appmate_rag_client.search(...)` call is gone for good — competitor evidence is unified through the `competitor-research` flow so the two workflows stay coherent.
 
 **Safety net**: `feature_ideate.py` still exits 2 with `competitors JSON not found` if the file is missing at script-execution time. This catches the case where the script was invoked outside the skill (cron, manual CLI). When it fires, treat it the same way — invoke `competitor-research` for the same app, then re-run.
 
@@ -44,13 +44,13 @@ Given a live app → the script aggregates raw reviews (last 90 days, ≤ 150) p
 | Item | Content |
 |---|---|
 | **Trigger** | the user says "run feature ideation for `<app>`" |
-| **Input** | `data/apps_full.json` (reviews) + **`data/competitors_<slug>.json`** (from `/appmate-competitors` — auto-chained on first run for an app, then cached) |
+| **Input** | `data/apps_full.json` (reviews) + **`data/competitors_<slug>.json`** (from the `competitor-research` skill — auto-chained on first run for an app, then cached) |
 | **Output** | `data/phase_a_feature_<slug>.json` (intermediate) + `data/feature_ideas_<slug>.md` (final) + **Claude pastes the full markdown back into the conversation** |
 | **Intervention points** | 2 (trigger + receive); optional follow-up "detail one of the ideas" |
 
 ## Workflow overview (3 steps)
 
-1. **Step 1 · Script pre-aggregation (`feature_ideate.py`)** — app fuzzy match (reuses `aso_optimize_v2`) → pull raw reviews from last 90 days (≤ 150, no filter) → load competitors from `data/competitors_<slug>.json` (Claude should have already auto-chained `/appmate-competitors` per §0.2 if the file was missing; script exits 2 as a safety net otherwise) → `data/phase_a_feature_<slug>.json`.
+1. **Step 1 · Script pre-aggregation (`feature_ideate.py`)** — app fuzzy match (reuses `aso_optimize_v2`) → pull raw reviews from last 90 days (≤ 150, no filter) → load competitors from `data/competitors_<slug>.json` (Claude should have already auto-chained the `competitor-research` skill per §0.2 if the file was missing; script exits 2 as a safety net otherwise) → `data/phase_a_feature_<slug>.json`.
 2. **Step 2 · LLM idea generation (Claude, conversation layer)** — read each raw review, decide whether it is a complaint, a suggestion, a praise, or noise; brainstorm 15-20 candidates (5× principle); score each on 4 dimensions (internal only); anti-junk filter (4 hard rules); sort by composite score descending, take the top 5-10.
 3. **Step 3 · Render + deliver (Claude)** — two sentences per item (what it is + why); arrange by composite score descending but **do not show scores**; save `data/feature_ideas_<slug>.md`; **paste the full markdown back into the conversation**.
 
@@ -82,15 +82,15 @@ Reuses `aso_optimize_v2.find_app()` — accepts App Store ID / bundle ID / SKU /
 
 ## 1c. Competitor loader (no RAG)
 
-`load_competitors(app_name, market)` reads `OUTPUT_DIR / f"competitors_{slugify(app_name, market)}.json"`. The file is the final artifact of `/appmate-competitors` (see `skills/competitor-research/SKILL.md`). Per §0.2, Claude should ensure this file exists *before* invoking the script — by auto-chaining `/appmate-competitors` when it's missing.
+`load_competitors(app_name, market)` reads `OUTPUT_DIR / f"competitors_{slugify(app_name, market)}.json"`. The file is the final artifact of the `competitor-research` skill (see `skills/competitor-research/SKILL.md`). Per §0.2, Claude should ensure this file exists *before* invoking the script — by auto-chaining that skill when it's missing.
 
 | Step | Behavior |
 |---|---|
-| File missing | return `None` → `build_phase_a` returns `None` → `main()` prints a safety-net message pointing at `/appmate-competitors` and exits 2. Normally never fires when the skill flow was followed; fires if the script was invoked directly. |
+| File missing | return `None` → `build_phase_a` returns `None` → `main()` prints a safety-net message pointing at the `competitor-research` skill and exits 2. Normally never fires when the skill flow was followed; fires if the script was invoked directly. |
 | File present | read `payload["filtered"]` (already top-10 by `threat_score`, already passed the LLM relevance pass) and copy these fields per entry: `name`, `description_short`, `outranked_keywords`, `relevance_reason`, `threat_score`, `rating`, `review_count` |
 | Stale data | the script does **not** check `generated_at` freshness; it surfaces the timestamp in phase_a so the LLM can flag staleness in the report if it looks old (> 30 days) |
 
-> **v2 → v3 change**: v2 called `appmate_rag_client.search(query=seed, region=market, top_k=10, ...)` directly with a seed-word it picked from the app's name. The seed-extraction was fragile (compound brand names like `便签Pro` lost their context, English-only `app` fallback returned useless rivals), and the RAG result was a different shape than the SERP-overlap rivals produced by `/appmate-competitors`. v3 reuses the already-curated, already-LLM-filtered result of `/appmate-competitors`, so the two workflows produce a coherent picture of the same competitive landscape.
+> **v2 → v3 change**: v2 called `appmate_rag_client.search(query=seed, region=market, top_k=10, ...)` directly with a seed-word it picked from the app's name. The seed-extraction was fragile (compound brand names like `便签Pro` lost their context, English-only `app` fallback returned useless rivals), and the RAG result was a different shape than the SERP-overlap rivals produced by the `competitor-research` skill. v3 reuses the already-curated, already-LLM-filtered result of that skill, so the two workflows produce a coherent picture of the same competitive landscape.
 
 ## 1d. phase_a JSON shape
 
@@ -164,7 +164,7 @@ Each candidate is scored 1-5 on 4 dimensions:
 
 - Sort by composite score, high to low.
 - Take the top **5-10** as finalists.
-- Main list < 5 → add a ⚠️ "insufficient evidence, suggest adding more reviews or expanding the competitor pool with `/appmate-competitors`" warning at the top.
+- Main list < 5 → add a ⚠️ "insufficient evidence, suggest adding more reviews or expanding the competitor pool with the `competitor-research` skill" warning at the top.
 
 ---
 
@@ -185,7 +185,7 @@ The template below is written with English placeholders. Substitute the equivale
 ```markdown
 # 🚀 <App name> · Feature recommendations
 
-> ⚠️ <evidence-thin warning — only shown when total reviews < 10 OR total competitors == 0. Example: "Evidence thin: only 7 reviews + 0 competitors. Recommend running /appmate-competitors first to add competitor evidence, then revisit this report.">
+> ⚠️ <evidence-thin warning — only shown when total reviews < 10 OR total competitors == 0. Example: "Evidence thin: only 7 reviews + 0 competitors. Recommend running the competitor-research skill first to add competitor evidence, then revisit this report.">
 
 **1. <Feature title>** — <one sentence: what the feature is, how it interacts>. <one sentence: why do it, what's the evidence>.
 
@@ -225,7 +225,7 @@ Want one expanded? Tell me the number and I can help you write a mini PRD (user 
 
 | Direction | Content |
 |---|---|
-| **Upstream auto-chain** | `data/apps_full.json` + **`data/competitors_<slug>.json`**. When the competitors file is missing, this skill first invokes `/appmate-competitors <app>` end-to-end (rivals markdown gets pasted back as a side effect), then continues. |
+| **Upstream auto-chain** | `data/apps_full.json` + **`data/competitors_<slug>.json`**. When the competitors file is missing, this skill first invokes the `competitor-research` skill for `<app>` end-to-end (rivals markdown gets pasted back as a side effect), then continues. |
 | **Side-chain trigger** | the `aso-daily-report` skill finds an app's rank dropping out → trigger this flow to find new features as a fix |
 | **Downstream upgrade (v4)** | add a `feature_detail_<slug>.py` to expand a single idea into a PRD |
 
@@ -237,7 +237,7 @@ Want one expanded? Tell me the number and I can help you write a mini PRD (user 
 # Step 0 prerequisite (one-time per app, also refresh whenever the SERP shifts):
 python3 scripts/competitor_research.py analyze "<app>"
 # ...then Claude tokenizes + the rank pass + Claude writes data/competitors_<slug>.json
-# (handled by /appmate-competitors end-to-end)
+# (handled by the competitor-research skill end-to-end)
 
 # Step 1: aggregate reviews + competitors → phase_a JSON
 python3 scripts/feature_ideate.py "<app>"
@@ -251,12 +251,12 @@ python3 scripts/feature_ideate.py "<app>"
 # Steps 2-3: Claude reads the phase_a JSON and generates + renders per §2 / §3 rules
 ```
 
-If `feature_ideate.py` exits 2 with `competitors JSON not found`, that is the safety net firing — invoke `/appmate-competitors "<app>"` end-to-end, then re-run this command. (In normal skill-driven runs you should not hit this, because §0.2 instructs Claude to auto-chain `/appmate-competitors` when the file is missing, before ever invoking the script.)
+If `feature_ideate.py` exits 2 with `competitors JSON not found`, that is the safety net firing — invoke the `competitor-research` skill for `<app>` end-to-end, then re-run this command. (In normal skill-driven runs you should not hit this, because §0.2 instructs Claude to auto-chain that skill when the file is missing, before ever invoking the script.)
 
 ## Known limits
 
 - Reviews mix languages; LLM classification may be off on idiomatic phrasing (taking the most recent 90 days lowers the risk).
-- The competitor list reflects whenever `/appmate-competitors` was last run for this app — staleness shows up in `competitors_generated_at`; if it's > 30 days old, suggest re-running the prereq before trusting the report.
+- The competitor list reflects whenever the `competitor-research` skill was last run for this app — staleness shows up in `competitors_generated_at`; if it's > 30 days old, suggest re-running the prereq before trusting the report.
 - The composite score is fairly subjective; running the same app multiple times varies ±20% (suggest taking the union).
 - Apps with ≤ 5 reviews struggle to produce reliable ideas (the first run warns "insufficient evidence").
 - v3 dropped the direct AppMate RAG call → no more "blind" same-keyword similar apps; the trade-off is a sharper, already-LLM-curated competitor set from the SERP-overlap path.

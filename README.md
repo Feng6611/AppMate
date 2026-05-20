@@ -1,10 +1,30 @@
 # AppMate
 
-A **Claude Code + Codex CLI plugin** — an App Store Connect operations toolkit for indie developers. Python data-layer scripts plus LLM-driven skills that cover **sales reporting, ASO optimization, ASO daily monitoring, feature ideation, competitor research, and growth strategy**.
+**Open-standard [Agent Skills](https://agentskills.io/) for App Store Connect** — a toolkit for indie developers that works in **Claude Code, Cursor, Codex, GitHub Copilot, Gemini CLI, Goose, OpenCode, and 50+ other AI coding agents**. Python data-layer scripts plus LLM-driven skills covering **sales reporting, ASO optimization, ASO daily monitoring, competitor research, feature ideation, and growth strategy**.
 
 Design pattern: scripts do the deterministic data work (API calls, caching, rank lookups); the LLM does everything that needs semantic judgment (CJK / Latin tokenization of App Store metadata, candidate generation, strategy reasoning, report rendering). Each workflow involves you only at the start and the end.
 
-The 7 skills are shared between Claude Code and Codex CLI — same `SKILL.md` files, same Python data layer, same reports. The only thing that differs is how you invoke them (slash command on Claude, `$skill-name` or natural language on Codex).
+The 7 skills are defined in standard `SKILL.md` format under `skills/` — every compatible agent finds them automatically. Same files, same Python data layer, same reports. Only the invocation syntax differs by agent.
+
+---
+
+## Install (any AI coding agent — recommended)
+
+One command, works for Cursor, Codex, Copilot, Gemini CLI, Goose, OpenCode, Cline, and 40+ more:
+
+```bash
+npx skills add fengyiqicoder/AppMate
+```
+
+Then install the Python data-layer dependencies (PyJWT + cryptography + requests):
+
+```bash
+pip install -r requirements.txt
+```
+
+Trigger any skill by natural language — say **"跑日报"** / **"run my sales report"** / **"优化 ASO"** and the agent will match the request against each skill's `description` and pick the right one. No slash commands needed.
+
+> See [skills.sh](https://www.skills.sh/) and [agentskills.io](https://agentskills.io/) for the full agent compatibility matrix.
 
 ---
 

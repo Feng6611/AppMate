@@ -1,6 +1,6 @@
 ---
 name: competitor-research
-description: Identify the top 5-10 rivals outranking a single app on its own core keywords. Use when the user asks for competitor research, "找竞品" / "找对手" / "跑竞争对手分析", or runs /appmate-competitors.
+description: Identify the top 5-10 rivals outranking a single app on its own core keywords. Use when the user asks for competitor research, "找竞品" / "找对手" / "跑竞争对手分析", or invokes this competitor-research skill.
 ---
 
 # Competitor Research Workflow
@@ -15,7 +15,7 @@ Run before anything else:
 python3 scripts/appmate_config.py check
 ```
 
-If exit code ≠ 0, STOP. Tell the user AppMate credentials are not configured, show the precheck output verbatim, and direct them to `/appmate-setup`. Do not invoke any other step of this skill.
+If exit code ≠ 0, STOP. Tell the user AppMate credentials are not configured, show the precheck output verbatim, and direct them to the `appmate-setup` skill. Do not invoke any other step of this skill.
 
 ## One-line summary
 
@@ -34,7 +34,7 @@ Single app → script writes phase_a (raw metadata + primary_genre_id) → **LLM
 
 | Item | Content |
 |---|---|
-| **Trigger** | user says "find competitors for `<app>`" / "跑 `<app>` 的竞品" / runs `/appmate-competitors <app>` |
+| **Trigger** | user says "find competitors for `<app>`" / "跑 `<app>` 的竞品" / invokes this skill for `<app>` |
 | **Input** | `data/apps_full.json` + `data/sales_cache.json` |
 | **Output** | `data/phase_a_competitors_<slug>.json`, `data/phase_b_competitors_<slug>.json`, `data/competitors_<slug>.json`, `data/competitors_<slug>.md` + **Claude pastes the full markdown back into the conversation** |
 | **User intervention** | 2 (trigger + LLM tokenize&filter, both in the same Claude turn) |
@@ -147,7 +147,7 @@ Outranks you on **<outrank_count> keywords**, on average **<round avg_rank_diff>
 
 **Top <N>**: #X / #Y / #Z — <one-sentence summary of each top rival's core threat>
 
-Want a deeper look at one rival's keyword layout? Tell me the number and I can pull their metadata via /appmate-aso-optimize for side-by-side comparison.
+Want a deeper look at one rival's keyword layout? Tell me the number and I can pull their metadata via the `aso-optimize` skill for side-by-side comparison.
 ```
 
 ### Empty-state template (when `len(filtered) == 0`)
@@ -219,7 +219,7 @@ python3 scripts/competitor_research.py show-b  "Sticky Note Pro"
 ## Connection to existing workflows
 
 - An `aso-daily-report` run that finds an app dropping out of top 20 on its own keyword → trigger this skill to see who took the slot.
-- Use the resulting "Top N" rivals to seed a follow-up `/appmate-aso-optimize <app>` run for keyword reshuffling.
+- Use the resulting "Top N" rivals to seed a follow-up `aso-optimize` skill run for `<app>` for keyword reshuffling.
 - **No downstream skill consumes `competitors_<slug>.json` yet** — wiring `feature-ideation` / `growth-strategy` is a separate task (see spec §15).
 
 ## Known limits
