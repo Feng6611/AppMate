@@ -18,10 +18,11 @@ before running anything.
 | `feature-ideation` | Prioritized feature ideas from reviews + competitor evidence. |
 | `growth-strategy` | Stage-diagnosed growth plan (cold start / early / plateau / decline). |
 
-This fork is run as a local tool clone and a minimal Codex skill plugin. Read
-the relevant `skills/<name>/SKILL.md`, then run the Python scripts from the repo
-root. When a skill mentions `/appmate-*`, treat that as the corresponding skill
-workflow name, not as a required slash command.
+This fork is reference code and optional data tooling, not the active `dev_kkuk`
+ASO operating system. Read the relevant `skills/<name>/SKILL.md` only to study
+or run a specific data workflow from the repo root. When a skill mentions
+`/appmate-*`, treat that as the corresponding workflow name, not as a required
+slash command.
 
 ## Hard safety rules (do not violate)
 
