@@ -178,28 +178,28 @@ Each candidate is scored 1-5 on 4 dimensions:
 > 3. **Two sentences per item only**: the first says "what it is / how it interacts", the second says "why do it / what the evidence is".
 > 4. Arrange by composite score high to low (but do not show the score).
 
-**Rendered in the same language the user has been using in this conversation.** Default to English; if the user has been writing in Chinese / Japanese / Spanish / etc., translate the template headers, labels and prose accordingly. App Store metadata strings (title / subtitle / keywords / competitor app names) must remain in the App Store's source locale (e.g. zh-Hans names stay zh-Hans) — only the surrounding explanation follows the user's conversation language.
+**Rendered in Chinese by default for this fork.** If the user explicitly asks for another language, translate the template headers, labels and prose accordingly. App Store metadata strings (title / subtitle / keywords / competitor app names) must remain in the App Store's source locale (e.g. zh-Hans names stay zh-Hans) — only the surrounding explanation is translated.
 
-The template below is written with English placeholders. Substitute the equivalent words in the user's conversation language when rendering.
+The template below is Chinese-first. Keep app names, keywords and competitor names in their source form.
 
 ```markdown
-# 🚀 <App name> · Feature recommendations
+# 🚀 <App name> · 功能建议
 
-> ⚠️ <evidence-thin warning — only shown when total reviews < 10 OR total competitors == 0. Example: "Evidence thin: only 7 reviews + 0 competitors. Recommend running the competitor-research skill first to add competitor evidence, then revisit this report.">
+> ⚠️ <证据偏薄提醒 — 仅当 total reviews < 10 或 total competitors == 0 时展示。例如：“证据偏薄：只有 7 条评论 + 0 个竞品。建议先运行 competitor-research 补充竞品证据，再回看这份报告。”>
 
-**1. <Feature title>** — <one sentence: what the feature is, how it interacts>. <one sentence: why do it, what's the evidence>.
+**1. <功能标题>** — <一句话说明功能是什么、如何交互>。<一句话说明为什么做、证据是什么>。
 
-**2. <Feature title>** — <same structure>.
+**2. <功能标题>** — <同样结构>。
 
-... (5-10 items total) ...
+...（共 5-10 项）...
 
-**N. <Feature title>** — <same structure>.
+**N. <功能标题>** — <同样结构>。
 
 ---
 
-**Top N**: #X / #Y / #Z — short summary of each item's core value (one sentence each).
+**Top N**: #X / #Y / #Z — 分别用一句话总结每项的核心价值。
 
-Want one expanded? Tell me the number and I can help you write a mini PRD (user stories / acceptance criteria / sprint breakdown).
+想展开某一项，告诉我编号，我可以继续写成小 PRD（用户故事 / 验收标准 / 迭代拆分）。
 ```
 
 ## 3.2 6 layout rules

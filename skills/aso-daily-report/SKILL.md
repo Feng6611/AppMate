@@ -57,12 +57,12 @@ Overall experience: **trigger → you run it all yourself → give the user the 
 
 ## Report template (v1 — follow exactly)
 
-**Rendered in the same language the user has been using in this conversation.** Default to English; if the user has been writing in Chinese / Japanese / Spanish / etc., translate the template headers, labels and prose accordingly. The keyword strings inside the table cells (the actual App Store metadata being analyzed) stay in their App Store locale form (e.g. zh-Hans tokens stay as zh-Hans) regardless of conversation language — only the surrounding column headers and prose follow the user's conversation language.
+**Rendered in Chinese by default for this fork.** If the user explicitly asks for another language, translate the template headers, labels and prose accordingly. The keyword strings inside the table cells (the actual App Store metadata being analyzed) stay in their App Store locale form (e.g. zh-Hans tokens stay as zh-Hans) regardless of report language — only the surrounding column headers and prose are translated.
 
 ### Top one-liner (required)
 
 ```
-**Yesterday ({MM-DD}) data · Rank = App Store web search · Popularity/difficulty = internal metric**
+**昨日 ({MM-DD}) 数据 · 排名 = App Store 网页搜索 · 热度/难度 = 内部指标**
 ```
 
 ### Per-app block (top 3 by 30-day downloads)
@@ -70,11 +70,11 @@ Overall experience: **trigger → you run it all yourself → give the user the 
 ```markdown
 ## {idx}. {app_name}  ·  {platform}  ·  {flag} {country}
 
-Downloads yesterday **{N}**  ·  target keywords **{X}** (rank ≤ 20, filtered from {Y} candidates)
+昨日下载 **{N}**  ·  目标关键词 **{X}**（排名 ≤ 20，从 {Y} 个候选词筛出）
 
-> ⚠️ If the app has no localization for that country's language family, print a one-line warning
+> ⚠️ 如果该 App 缺少对应国家语言族本地化，输出一行提醒
 
-| Keyword | Rank | Δ | Popularity | Difficulty |
+| 关键词 | 排名 | 变化 | 热度 | 难度 |
 |---|:-:|:-:|:-:|:-:|
 | `keyword` | **#N** | ↑3 | **88** 🔥 | 44 🟢 |
 | ... | ... | ↓1 | ... | ... |
@@ -84,11 +84,11 @@ Sorting: **descending by popularity**, ties by ascending rank.
 
 ## 8 inviolable rules
 
-1. Top one-liner only (`Yesterday (MM-DD) data …`), do not stack metadata rows.
+1. Top one-liner only (`昨日 (MM-DD) 数据 …`), do not stack metadata rows.
 2. Each app uses `H2 (##)`, **single-market focus**, do not show multiple markets.
 3. **Do not** show source tags (T/S/K/X), **do not** add a suggestions column, **do not** show competitor counts.
 4. **Must** show the delta (even if it is all `—` on day one).
-5. Difficulty colors: ≥ 70 🔴 hard · 50-69 🟡 medium · < 50 🟢 easy.
+5. Difficulty colors: ≥ 70 🔴 高 · 50-69 🟡 中 · < 50 🟢 低.
 6. Heat colors: ≥ 50 🔥 · otherwise plain number.
 7. Rank ≤ 10 bold `**#N**`, 11-20 plain `#N`, > 20 should not appear (already filtered by `TARGET_RANK_CEILING`).
 8. **Must paste back into the conversation** — after running the script, Claude must paste the complete markdown report into the reply; "aso_daily.md generated" alone or a summary alone is not allowed.

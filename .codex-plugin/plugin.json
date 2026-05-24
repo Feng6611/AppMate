@@ -1,0 +1,20 @@
+{
+  "name": "appmate",
+  "version": "1.0.2",
+  "description": "Read-only App Store Connect growth toolkit for indie developers: sales reporting, ASO optimization, keyword monitoring, competitor research, feature ideation, and growth strategy.",
+  "author": {
+    "name": "Feng6611"
+  },
+  "homepage": "https://github.com/Feng6611/AppMate",
+  "repository": "https://github.com/Feng6611/AppMate",
+  "keywords": [
+    "app-store",
+    "aso",
+    "app-store-connect",
+    "indie",
+    "analytics",
+    "growth",
+    "mac-app-store"
+  ],
+  "skills": "./skills/"
+}

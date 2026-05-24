@@ -9,12 +9,14 @@ This fork keeps the core AppMate design:
 - `data/keyword_reference_*`: static keyword reference tables.
 - `tests/`: regression tests for the Python data layer.
 
-It intentionally drops the parts that were specific to plugin distribution or the upstream maintainer's development history:
+It intentionally drops the parts that were specific to Claude distribution or the upstream maintainer's development history:
 
-- Claude/Codex plugin manifests.
-- Claude slash-command wrappers.
+- Claude plugin manifests and slash-command wrappers.
 - Session-start update hook and upstream-repo update checker.
 - Historical `docs/superpowers/` implementation plans with personal paths and obsolete design notes.
+
+This fork keeps a minimal `.codex-plugin/plugin.json` so Codex can discover the
+local skills. It does not restore Claude hooks, commands, or self-update code.
 
 ## Workflows
 

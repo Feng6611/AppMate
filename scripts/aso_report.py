@@ -361,11 +361,11 @@ def render_app_section(
         })
     market_rows.sort(key=lambda m: -m["dl_yesterday"])
 
-    lines.append(f"### 🌍 Per-market performance (sorted by yesterday's downloads desc, download date {data_today:%Y-%m-%d})")
+    lines.append(f"### 🌍 分市场表现（按昨日下载量降序，下载数据日期 {data_today:%Y-%m-%d}）")
     lines.append("")
-    lines.append("> Keyword source tags — T: title · S: subtitle · K: keyword field")
+    lines.append("> 关键词来源标记 — T: 标题 · S: 副标题 · K: 关键词字段")
     lines.append("")
-    lines.append("| Market | Downloads (yesterday) | Keywords ranked ≤ #20 ([source]) |")
+    lines.append("| 市场 | 昨日下载 | 排名 ≤ #20 的关键词（[来源]） |")
     lines.append("|---|---:|---|")
     for row in market_rows:
         flag = _flag(row["country"])
@@ -374,7 +374,7 @@ def render_app_section(
                 f"`{k}` **#{p}** [{s}]" for k, p, s in row["top20"]
             )
         else:
-            kws_cell = "_none_"
+            kws_cell = "_无_"
         lines.append(
             f"| {flag} {row['country']} (`{row['locale']}`) | "
             f"{row['dl_yesterday']:,} | {kws_cell} |"
@@ -392,7 +392,7 @@ def render_app_section(
         leftover_str = ", ".join(
             f"{_flag(cc)} {cc} ({n})" for cc, n in leftover[:10]
         )
-        lines.append(f"> 📌 Markets with downloads but no matching locale keywords: {leftover_str}")
+        lines.append(f"> 📌 有下载但缺少匹配语言关键词的市场: {leftover_str}")
         lines.append("")
 
     return lines
@@ -412,12 +412,12 @@ def main() -> int:
     rank_cache = load_rank_cache()
 
     lines: list[str] = []
-    lines.append("# 🎯 ASO Keyword Ranking Daily Report")
+    lines.append("# 🎯 ASO 关键词排名日报")
     lines.append("")
-    lines.append(f"- 🕐 Generated: **{dt.datetime.now():%Y-%m-%d %H:%M}**")
-    lines.append(f"- 📅 Download data date: **{data_today:%Y-%m-%d}**")
-    lines.append(f"- 🔍 Rank: iTunes Search Top-200 (same source as App Store web)")
-    lines.append(f"- 📱 Scope: top 3 live apps by last-30-day downloads")
+    lines.append(f"- 🕐 生成时间: **{dt.datetime.now():%Y-%m-%d %H:%M}**")
+    lines.append(f"- 📅 下载数据日期: **{data_today:%Y-%m-%d}**")
+    lines.append(f"- 🔍 排名: iTunes Search Top-200（与 App Store 网页搜索同源）")
+    lines.append(f"- 📱 范围: 近 30 天下载量 Top 3 的上架 App")
     lines.append("")
     lines.append("---")
     lines.append("")

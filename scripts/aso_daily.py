@@ -270,9 +270,9 @@ def _fmt_diff(d: int | None) -> str:
 
 def render(results: list[dict[str, Any]], data_today: dt.date) -> str:
     lines: list[str] = []
-    lines.append("# 🎯 ASO Daily Report")
+    lines.append("# 🎯 ASO 每日报告")
     lines.append("")
-    lines.append(f"**Yesterday ({data_today:%m-%d}) data · Rank = App Store web search · Popularity/difficulty = internal metric**")
+    lines.append(f"**昨日 ({data_today:%m-%d}) 数据 · 排名 = App Store 网页搜索 · 热度/难度 = 内部指标**")
     lines.append("")
     lines.append("---")
     lines.append("")
@@ -283,17 +283,17 @@ def render(results: list[dict[str, Any]], data_today: dt.date) -> str:
 
         lines.append(f"## {idx}. {R['name']}  ·  {plat_label}  ·  {flag} {R['country']}")
         lines.append("")
-        lines.append(f"Downloads yesterday **{R['downloads_yesterday']:,}**  ·  target keywords **{len(R['target_words'])}** (rank ≤ {TARGET_RANK_CEILING}, filtered from {R['total_candidates']} candidates)")
+        lines.append(f"昨日下载 **{R['downloads_yesterday']:,}**  ·  目标关键词 **{len(R['target_words'])}**（排名 ≤ {TARGET_RANK_CEILING}，从 {R['total_candidates']} 个候选词筛出）")
         if not R["is_localized"]:
             lines.append("")
-            lines.append(f"> ⚠️ This app has no localization for the {R['country']} language family")
+            lines.append(f"> ⚠️ 该 App 缺少 {R['country']} 对应语言族的本地化")
         lines.append("")
 
         if not R["target_words"]:
-            lines.append("> No target keywords with rank ≤ 20.")
+            lines.append("> 暂无排名 ≤ 20 的目标关键词。")
             lines.append("")
         else:
-            lines.append("| Keyword | Rank | Δ | Popularity | Difficulty |")
+            lines.append("| 关键词 | 排名 | 变化 | 热度 | 难度 |")
             lines.append("|---|:-:|:-:|:-:|:-:|")
             for row in R["target_words"]:
                 kw_disp = row["keyword"].replace("|", "\\|")

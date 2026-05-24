@@ -306,42 +306,42 @@ The output footer **must include**:
 > **⚠️ Wording rule (must follow)**: in the deliverable document, **every position / field reference must use the full name** — `Title / Subtitle / Keywords` (or the user's-language equivalent, e.g. `主标题 / 副标题 / 关键词`). **The single letters T / S / K / X are not allowed** (this applies to section rule text and checklists too). Reason: an abbreviation has no context when the user reviews it.
 
 ```markdown
-# <App> · ASO Optimization Suggestions
+# <App> · ASO 优化建议
 
-**Generated at** / **Main market** / **App info**
+**生成时间** / **主市场** / **App 信息**
 
-## Three strings (paste-ready)
+## 三段可直接提交的文案
 
-Title    (X/30 char): <NEW>
-Subtitle (X/30 char): <NEW>
-Keywords (X/100 char): <NEW>
+主标题 (X/30 char): <NEW>
+副标题 (X/30 char): <NEW>
+关键词 (X/100 char): <NEW>
 
-## OLD vs NEW comparison
+## OLD vs NEW 对比
 
-| Field | OLD | NEW | Δ |
+| 字段 | OLD | NEW | 变化 |
 
-## Deletion list
+## 删除清单
 
-| Word | Original position | pop | diff | rank | Reason |
+| 词 | 原位置 | pop | diff | rank | 原因 |
 ("Original position" column: write `Title` / `Subtitle` / `Keywords`, not T/S/K)
 **Column rules**:
 - `pop` / `diff` / `rank` are mandatory — all three numbers are needed to verify §10.1 Tier / §10.4 / §7.2 decisions.
 - `Reason` column must be a **plain-language sentence** explaining why the word is being deleted — written so a non-technical reader understands. Cite specific evidence (pop / diff / rank values, Apple behavior, semantic reasoning) instead of `§` shortcuts. The official `§` rule may be cited inline as supporting context, but the bulk of the cell is a readable sentence, not a code-like reference. Bad: `§10.1 Tier 3`. Good: `Zero search volume (pop=5), and Apple's CJK tokenizer already splits "组件" out of the Title's "桌面小组件" — repeating it wastes 2 chars`.
 
-## Addition list
+## 新增清单
 
-| Word | New position | pop | diff | rank | Reason |
+| 词 | 新位置 | pop | diff | rank | 原因 |
 (same: `Title` / `Subtitle` / `Keywords`)
 **Column rules**: same as the Deletion list. The `Reason` column is a plain-language sentence stating (a) why this word is worth a slot, (b) which evidence drives the decision (pop / diff / rank), (c) what the expected outcome is (short-term rank push vs long-term weight accumulation). Bad: `§10.1 Tier 4 push`. Good: `pop 65 high + diff 48 unusually low; OneSearch can also surface system SMS; placing it in the Title should reach top 20 in 30-60 days`.
 
-## §10.2 dual-locale expansion audit (if applicable)
+## §10.2 双本地化扩展检查（如适用）
 
-## §10.5 long-term weight tracking
+## §10.5 长期权重跟踪
 
-## 📌 Post-delivery suggestions (required — user-facing options)
+## 📌 交付后建议（必需，面向用户）
 ```
 
-**Rendered in the same language the user has been using in this conversation.** Default to English; if the user has been writing in Chinese / Japanese / Spanish / etc., translate the template headers, labels and prose accordingly. The proposed App Store metadata strings (title / subtitle / keywords) must remain in the target App Store's locale (e.g. zh-Hans for the CN store) regardless — only the surrounding explanation follows the user's conversation language.
+**Rendered in Chinese by default for this fork.** If the user explicitly asks for another language, translate the template headers, labels and prose accordingly. The proposed App Store metadata strings (title / subtitle / keywords) must remain in the target App Store's locale (e.g. zh-Hans for the CN store) regardless — only the surrounding explanation is translated.
 
 ## 8.7 Post-delivery suggestions (must include — 2 options for the user)
 

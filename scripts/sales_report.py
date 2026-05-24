@@ -36,6 +36,14 @@ TODAY = dt.date.today()  # 2026-05-12 per session context
 # (Apple's daily report lag is 1–2 days). Set by main() once cache is loaded.
 DATA_TODAY: dt.date = TODAY - dt.timedelta(days=1)
 
+DIMENSION_LABELS_ZH = {
+    "Yesterday": "昨日",
+    "Last 7 days": "近 7 天",
+    "Last 30 days": "近 30 天",
+    "This week": "本周",
+    "This month": "本月",
+}
+
 # Coarse FX → USD. Good enough for cross-app ranking; not accounting-grade.
 FX_TO_USD: dict[str, float] = {
     "USD": 1.00, "EUR": 1.08, "GBP": 1.26, "JPY": 0.0065, "CNY": 0.138,
@@ -420,6 +428,10 @@ def _short_range_compact(d: tuple[dt.date, dt.date]) -> str:
     return f"{start:%m-%d}~{end:%m-%d}"
 
 
+def _label_zh(label: str) -> str:
+    return DIMENSION_LABELS_ZH.get(label, label)
+
+
 def _top_n(
     cur: dict[str, dict[str, float]],
     prev: dict[str, dict[str, float]],
@@ -461,17 +473,17 @@ def render(dims: list[dict[str, Any]], live_apps: set[str]) -> None:
     week_rev_str, _ = _rev("This week")
     month_rev_str, _ = _rev("This month")
 
-    lines.append("# 📊 App Store Sales & Downloads Daily Report")
+    lines.append("# 📊 App Store 销售与下载日报")
     lines.append("")
     lines.append(
-        f"**Yesterday ({DATA_TODAY:%m-%d}) revenue {yest_rev_str}** · "
-        f"this week {week_rev_str} · "
-        f"this month {month_rev_str}"
+        f"**昨日 ({DATA_TODAY:%m-%d}) 收入 {yest_rev_str}** · "
+        f"本周 {week_rev_str} · "
+        f"本月 {month_rev_str}"
     )
     lines.append("")
     lines.append("---")
     lines.append("")
-    lines.append("## 🧮 Totals")
+    lines.append("## 🧮 汇总")
     lines.append("")
 
     for d in dims:
@@ -483,16 +495,16 @@ def render(dims: list[dict[str, Any]], live_apps: set[str]) -> None:
         prv_rev = sum(m["revenue_usd"] for n, m in prev.items() if n in live_apps)
         rng_short = _short_range_compact(d["current"])
 
-        lines.append(f"### {d['label']} ({rng_short})")
+        lines.append(f"### {_label_zh(d['label'])} ({rng_short})")
         lines.append("")
         start, end = d["current"]
         if start > end:
-            lines.append("> ⏳ Data not yet published by Apple")
+            lines.append("> ⏳ Apple 尚未发布该时间段数据")
             lines.append("")
             continue
 
         # Revenue + top 3 apps
-        lines.append(f"- 💰 Revenue: **{fmt_usd(cur_rev)}**  ·  {pct_change_md(cur_rev, prv_rev)}")
+        lines.append(f"- 💰 收入: **{fmt_usd(cur_rev)}**  ·  {pct_change_md(cur_rev, prv_rev)}")
         top_rev = _top_n(cur, prev, live_apps, "revenue_usd", n=3)
         for rank_i, (name, c_val, p_val) in enumerate(top_rev, 1):
             share = (c_val / cur_rev * 100) if cur_rev else 0.0
@@ -502,7 +514,7 @@ def render(dims: list[dict[str, Any]], live_apps: set[str]) -> None:
             )
 
         # Downloads + top 3 apps
-        lines.append(f"- 📥 Downloads: **{fmt_int(cur_dl)}**  ·  {pct_change_md(cur_dl, prv_dl)}")
+        lines.append(f"- 📥 下载量: **{fmt_int(cur_dl)}**  ·  {pct_change_md(cur_dl, prv_dl)}")
         top_dl = _top_n(cur, prev, live_apps, "downloads", n=3)
         for rank_i, (name, c_val, p_val) in enumerate(top_dl, 1):
             share = (c_val / cur_dl * 100) if cur_dl else 0.0
@@ -514,8 +526,8 @@ def render(dims: list[dict[str, Any]], live_apps: set[str]) -> None:
 
     lines.append("---")
     lines.append("")
-    lines.append("> ⓘ Revenue is multi-currency, converted to USD via approximate FX (not finance-grade). Apple daily reports lag 1–2 days.")
-    lines.append("> This month compares against the **entire previous month**; last 7/30 days compare against the 7/30 days before that.")
+    lines.append("> ⓘ 收入包含多币种，并使用粗略汇率换算为 USD，仅用于趋势判断，不作为财务对账。Apple 日报通常延迟 1-2 天。")
+    lines.append("> 本月与**完整上个月**对比；近 7/30 天分别与前一个 7/30 天窗口对比。")
 
     md = "\n".join(lines)
     print(md)

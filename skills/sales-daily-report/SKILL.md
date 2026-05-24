@@ -53,28 +53,28 @@ Pull ~65 days of daily reports from App Store Connect → aggregate across 5 tim
 
 ## Report template (v1 — follow exactly)
 
-**Rendered in the same language the user has been using in this conversation.** Default to English; if the user has been writing in Chinese / Japanese / Spanish / etc., translate the template headers, labels and prose accordingly. App / SKU / country names stay in their original form. The script itself emits English strings — translate them on the fly when rendering back into the conversation reply if the user's language is not English.
+**Rendered in Chinese by default for this fork.** If the user explicitly asks for another language, translate the template headers, labels and prose accordingly. App / SKU / country names stay in their original form. The script itself emits Chinese Markdown.
 
 ### Top one-liner (required)
 
 ```
-**Yesterday ({MM-DD}) revenue ${X}** · this week ${X} · this month ${X}
+**昨日 ({MM-DD}) 收入 ${X}** · 本周 ${X} · 本月 ${X}
 ```
 
-If Apple has not published a range's data yet, that slot shows `N/A` and the per-dimension block prints `> ⏳ Data not yet published by Apple`.
+If Apple has not published a range's data yet, that slot shows `N/A` and the per-dimension block prints `> ⏳ Apple 尚未发布该时间段数据`.
 
 ### Totals block (5 dimensions, fixed order)
 
 ```markdown
-## 🧮 Totals
+## 🧮 汇总
 
 ### {dimension} ({range-compact})
 
-- 💰 Revenue: **{current revenue}**  ·  {↑↓ N%}
+- 💰 收入: **{current revenue}**  ·  {↑↓ N%}
     1. **{revenue}** ({share}%)  ·  {↑↓ N%}  ·  {app name}
     2. **{revenue}** ({share}%)  ·  {↑↓ N%}  ·  {app name}
     3. **{revenue}** ({share}%)  ·  {↑↓ N%}  ·  {app name}
-- 📥 Downloads: **{current downloads}**  ·  {↑↓ N%}
+- 📥 下载量: **{current downloads}**  ·  {↑↓ N%}
     1. **{downloads}** ({share}%)  ·  {↑↓ N%}  ·  {app name}
     2. **{downloads}** ({share}%)  ·  {↑↓ N%}  ·  {app name}
     3. **{downloads}** ({share}%)  ·  {↑↓ N%}  ·  {app name}
@@ -83,8 +83,8 @@ If Apple has not published a range's data yet, that slot shows `N/A` and the per
 ### Footer note (required)
 
 ```
-> ⓘ Revenue is multi-currency, converted to USD via approximate FX (not finance-grade). Apple daily reports lag 1–2 days.
-> This month compares against the **entire previous month**; last 7/30 days compare against the 7/30 days before that.
+> ⓘ 收入包含多币种，并使用粗略汇率换算为 USD，仅用于趋势判断，不作为财务对账。Apple 日报通常延迟 1-2 天。
+> 本月与**完整上个月**对比；近 7/30 天分别与前一个 7/30 天窗口对比。
 ```
 
 ## 10 inviolable rules

@@ -18,10 +18,10 @@ before running anything.
 | `feature-ideation` | Prioritized feature ideas from reviews + competitor evidence. |
 | `growth-strategy` | Stage-diagnosed growth plan (cold start / early / plateau / decline). |
 
-This fork is run as a local tool clone, not as a distributed Claude/Codex
-plugin. Read the relevant `skills/<name>/SKILL.md`, then run the Python scripts
-from the repo root. When a skill mentions `/appmate-*`, treat that as the
-corresponding skill workflow name, not as a required slash command.
+This fork is run as a local tool clone and a minimal Codex skill plugin. Read
+the relevant `skills/<name>/SKILL.md`, then run the Python scripts from the repo
+root. When a skill mentions `/appmate-*`, treat that as the corresponding skill
+workflow name, not as a required slash command.
 
 ## Hard safety rules (do not violate)
 
@@ -50,10 +50,10 @@ corresponding skill workflow name, not as a required slash command.
 
 ## Output language
 
-Reports are rendered in the language the user has been writing in this
-conversation (English by default). App Store metadata strings stay in the
-target-market locale regardless of the conversation language — only the
-surrounding prose / headers / labels follow the user.
+Reports are rendered in Chinese by default for this `dev_kkuk` fork. App Store
+metadata strings stay in the target-market locale regardless of the report
+language — only the surrounding prose / headers / labels are translated. If the
+user explicitly asks for another language, use that language instead.
 
 ## Repository layout
 

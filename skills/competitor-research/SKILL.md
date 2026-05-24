@@ -113,30 +113,30 @@ If fewer than 3 candidates pass relevance, the markdown shows an evidence-thin w
 
 ## Markdown report template (v1 — follow exactly)
 
-**Rendered in the same language the user has been using in this conversation.** Default to English; if the user has been writing in Chinese / Japanese / Spanish / etc., translate the template headers, labels and prose accordingly. App Store metadata strings (title / subtitle / keywords / competitor app names) must remain in the App Store's source locale (e.g. zh-Hans names stay zh-Hans) — only the surrounding explanation follows the user's conversation language.
+**Rendered in Chinese by default for this fork.** If the user explicitly asks for another language, translate the template headers, labels and prose accordingly. App Store metadata strings (title / subtitle / keywords / competitor app names) must remain in the App Store's source locale (e.g. zh-Hans names stay zh-Hans) — only the surrounding explanation is translated.
 
-The template below is written with English placeholders. Substitute the equivalent words in the user's conversation language when rendering.
+The template below is Chinese-first. Keep app names, keywords and market codes in their source form.
 
 ```markdown
-# 🎯 <App name> · Top competitors worth studying
+# 🎯 <App name> · 值得研究的核心竞品
 
 > ⚠️ <evidence-thin warning — only when kept < 3>
 
-**Main market**: <flag> <country>  ·  **30-day downloads**: <N>  ·  **Core keywords searched**: <X>
+**主市场**: <flag> <country>  ·  **近 30 天下载**: <N>  ·  **已搜索核心关键词**: <X>
 
 ---
 
-## 1. <Rival name> · ★<rating> (<review_count> reviews)
+## 1. <Rival name> · ★<rating>（<review_count> 条评论）
 
-Outranks you on **<outrank_count> keywords**, on average **<round avg_rank_diff> places** higher
+在 **<outrank_count> 个关键词**上排在你前面，平均领先 **<round avg_rank_diff> 个名次**
 
-| Keyword | You | Them | Lead | Popularity |
+| 关键词 | 你 | 对方 | 领先 | 热度 |
 |---|:-:|:-:|:-:|:-:|
 | `<kw1>` | <#N or unranked> | **#<n>** | <diff> | <pop> <🔥 if ≥50> |
 | `<kw2>` | ... | ... | ... | ... |
 | `<kw3>` | ... | ... | ... | ... |
 
-> **Why this one**: <relevance_reason — one sentence in the user's conversation language>
+> **为什么看它**: <relevance_reason — one sentence in Chinese by default>
 
 ---
 
@@ -145,29 +145,29 @@ Outranks you on **<outrank_count> keywords**, on average **<round avg_rank_diff>
 
 ---
 
-**Top <N>**: #X / #Y / #Z — <one-sentence summary of each top rival's core threat>
+**Top <N>**: #X / #Y / #Z — <用一句话概括每个核心竞品的威胁点>
 
-Want a deeper look at one rival's keyword layout? Tell me the number and I can pull their metadata via the `aso-optimize` skill for side-by-side comparison.
+想深入看某个竞品的关键词布局，可以告诉我编号，我会用 `aso-optimize` workflow 拉它的元数据做横向对比。
 ```
 
 ### Empty-state template (when `len(filtered) == 0`)
 
-When the LLM relevance pass keeps zero candidates, do NOT render the per-rival `##` blocks. Instead, render exactly this (translate headers/labels into the user's conversation language):
+When the LLM relevance pass keeps zero candidates, do NOT render the per-rival `##` blocks. Instead, render exactly this:
 
 ```markdown
-# 🎯 <App name> · Top competitors worth studying
+# 🎯 <App name> · 值得研究的核心竞品
 
-> ⚠️ No qualifying rivals · this app has no same-category rivals on its own keyword SERPs that meet the `MIN_OUTRANK_COUNT = 3` threshold.
+> ⚠️ 暂无合格竞品 · 在自身关键词 SERP 中，没有满足 `MIN_OUTRANK_COUNT = 3` 门槛的同类竞品。
 
-**Main market**: <flag> <country>  ·  **30-day downloads**: <N>  ·  **Core keywords searched**: <X>
+**主市场**: <flag> <country>  ·  **近 30 天下载**: <N>  ·  **已搜索核心关键词**: <X>
 
-Likely causes (ordered by likelihood):
+可能原因（按概率排序）:
 
-1. **Too few keywords**: at least 3 valid tokens are required for any rival to pass the density threshold. Check whether `raw.keywords` in `phase_a_competitors_<slug>.json` is empty or has only 1-2 tokens.
-2. **The app is the leader of this niche**: no rival outranks you ≥ 3 times across your own SERP.
-3. **Category mismatch**: your `primary_genre_id` does not match any candidate rival — common for niche keywords with cross-category mixing.
+1. **关键词太少**: 至少需要 3 个有效 token，竞品才可能通过密度门槛。检查 `phase_a_competitors_<slug>.json` 里的 `raw.keywords` 是否为空或只有 1-2 个词。
+2. **该 App 已经是细分赛道领先者**: 没有竞品能在你的自身 SERP 中累计领先 ≥ 3 次。
+3. **类目不匹配**: 你的 `primary_genre_id` 与候选竞品不一致，细分关键词跨类目混排时很常见。
 
-To dig deeper, run `python3 scripts/competitor_research.py show-b "<app>"` to inspect the phase_b candidate pool (the pre-filter detail).
+要继续深挖，运行 `python3 scripts/competitor_research.py show-b "<app>"` 查看 phase_b 候选池（过滤前明细）。
 ```
 
 ## 10 inviolable rules
