@@ -76,7 +76,6 @@ from typing import Any
 import requests
 
 import appmate_config
-import check_for_update
 
 # --- Config -------------------------------------------------------------
 CACHE_TTL_SECONDS = 7 * 24 * 3600
@@ -227,18 +226,15 @@ def require_safe_key_or_exit(stream=None, *, force_probe: bool = False) -> None:
     """Combined gate used by every workflow entrypoint and the check CLI.
 
     Order of checks:
-        0. Non-blocking outdated-version banner (check_for_update.warn_if_outdated)
         1. Offline credential validation (appmate_config.require_credentials_or_exit)
         2. Online role-safety probe (cached for 7 days)
 
     Exits with status 2 and a clear, actionable message on either credential
-    or role-probe failure. The version banner is informational and never
-    exits — being on an old version is not an unsafe condition.
+    or role-probe failure.
     """
     if stream is None:
         stream = sys.stderr
 
-    check_for_update.warn_if_outdated(stream=stream)
     appmate_config.require_credentials_or_exit(stream=stream)
 
     assessment = assess_key_safety(force=force_probe)

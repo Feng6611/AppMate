@@ -238,9 +238,10 @@ def test_rank_keyword_with_details_uses_cache(tmp_path, monkeypatch):
     import competitor_research as cr
 
     cache_path = tmp_path / "serp.json"
+    recent_ts = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1)).isoformat()
     cache_path.write_text(json.dumps({
         "software|cn|便签": {
-            "fetched_at": "2026-05-16T00:00:00Z",
+            "fetched_at": recent_ts,
             "entries": [{
                 "itunes_id": "100", "bundle_id": "com.a", "name": "App A",
                 "primary_genre_id": 6007, "rating": 4.5, "review_count": 1000,

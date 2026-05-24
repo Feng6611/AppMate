@@ -6,7 +6,7 @@ ranked higher than self, aggregate across tokens, score by
 popularity-weighted position differential, hard-filter on genre + density,
 then let Claude do a batched LLM relevance pass on name + description.
 
-See docs/superpowers/specs/2026-05-16-competitor-research-design.md.
+The authoritative workflow lives in skills/competitor-research/SKILL.md.
 """
 from __future__ import annotations
 

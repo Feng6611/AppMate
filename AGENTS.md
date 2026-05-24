@@ -18,17 +18,10 @@ before running anything.
 | `feature-ideation` | Prioritized feature ideas from reviews + competitor evidence. |
 | `growth-strategy` | Stage-diagnosed growth plan (cold start / early / plateau / decline). |
 
-Invoke a skill the way your CLI expects:
-
-- **Claude Code**: `/appmate-<workflow>` (e.g. `/appmate-sales`) — the slash
-  command is a thin wrapper that calls the skill.
-- **Codex CLI**: `$<skill-name>` (e.g. `$sales-daily-report`) or just describe
-  the task in natural language — Codex matches against the skill's `description`
-  frontmatter field.
-
-Where a `SKILL.md` says "run `/appmate-setup`", treat it as "invoke the
-`appmate-setup` skill" — on Codex that means `$appmate-setup` or asking for
-setup in plain language.
+This fork is run as a local tool clone, not as a distributed Claude/Codex
+plugin. Read the relevant `skills/<name>/SKILL.md`, then run the Python scripts
+from the repo root. When a skill mentions `/appmate-*`, treat that as the
+corresponding skill workflow name, not as a required slash command.
 
 ## Hard safety rules (do not violate)
 
@@ -65,13 +58,10 @@ surrounding prose / headers / labels follow the user.
 ## Repository layout
 
 ```
-.claude-plugin/   Claude Code plugin manifests
-.codex-plugin/    Codex CLI plugin manifest
-commands/         Claude Code slash command wrappers (one per workflow)
 skills/           7 SKILL.md workflows — shared by both CLIs
 scripts/          Python data layer + entry points
 config/           gitignored — user credentials
 data/             gitignored except for the two keyword_reference tables
-docs/             ASC API reference + design specs
+docs/             ASC API reference
 tests/            pytest suite
 ```

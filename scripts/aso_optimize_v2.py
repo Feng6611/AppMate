@@ -1,6 +1,6 @@
 """ASO Optimize v2 — on-demand single-app optimizer.
 
-See docs/superpowers/specs/2026-05-13-aso-optimize-v2-design.md for the design.
+The authoritative workflow lives in skills/aso-optimize/SKILL.md.
 
 CLI:
     python3 aso_optimize_v2.py analyze <app>
